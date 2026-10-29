@@ -219,10 +219,9 @@ async function generate() {
   bar.style.width = '6%';
   let ai = null;
 
-  openGen('正在编曲');
-  setGen(0.02, '准备中…');
-
   try {
+    openGen('正在编曲');
+    setGen(0.02, '准备中…');
     if (s.ai && s.inspire.length >= 2) {
       status('AI 正在理解这段描述…');
       setGen(0.06, 'AI 正在理解这段描述…', '大模型选调式、速度与配器');
@@ -286,7 +285,11 @@ async function generate() {
     status('生成失败：' + e.message, 'err');
     toast('生成失败：' + e.message, 4000);
   } finally {
-    btn.disabled = false; busy = false;
+    // 无论成功失败，按钮都必须回到可用状态
+    closeGen();
+    btn.disabled = false;
+    busy = false;
+    btn.querySelector('span').textContent = '生成编曲';
     setTimeout(() => { bar.style.width = '0'; }, 700);
   }
 }
