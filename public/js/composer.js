@@ -35,37 +35,78 @@ function turnaroundDegree(mode) {
 
 /* ---------------- 音轨规格 ---------------- */
 
+// 每个曲风的默认配器：4~5 轨，覆盖不同音色但保持清晰
+const MOOD_ENSEMBLE = {
+  qingya: [
+    { role: 'lead', inst: 'guzheng' }, { role: 'harm', inst: 'dizi' },
+    { role: 'harm', inst: 'yangqin' }, { role: 'bass', inst: 'bass' },
+  ],
+  huankuai: [
+    { role: 'lead', inst: 'pipa' }, { role: 'harm', inst: 'dizi' },
+    { role: 'harm', inst: 'yangqin' }, { role: 'perc', inst: 'drum' },
+    { role: 'bass', inst: 'bass' },
+  ],
+  cangliang: [
+    { role: 'lead', inst: 'xun' }, { role: 'harm', inst: 'xiao' },
+    { role: 'pad', inst: 'bianzhong' }, { role: 'perc', inst: 'gong' },
+    { role: 'bass', inst: 'bass' }, { role: 'amb', inst: 'wind' },
+  ],
+  chanyi: [
+    { role: 'lead', inst: 'bianzhong' }, { role: 'harm', inst: 'guqin' },
+    { role: 'pad', inst: 'xiao' }, { role: 'perc', inst: 'muyu' },
+    { role: 'bass', inst: 'bass' },
+  ],
+  jianghu: [
+    { role: 'lead', inst: 'pipa' }, { role: 'harm', inst: 'erhu' },
+    { role: 'harm', inst: 'suona' }, { role: 'perc', inst: 'drum' },
+    { role: 'bass', inst: 'bass' },
+  ],
+  xiandai: [
+    { role: 'lead', inst: 'guzheng' }, { role: 'harm', inst: 'erhu' },
+    { role: 'pad', inst: 'pad' }, { role: 'perc', inst: 'drum' },
+    { role: 'bass', inst: 'bass' }, { role: 'amb', inst: 'rain' },
+  ],
+};
+
 export function defaultTracks(mood) {
+  const ens = MOOD_ENSEMBLE[mood.id];
+  if (ens) return ens.map(t => ({ ...t }));
+  // 兜底：按 palette 推
   const pal = mood.palette || [];
-  // 主旋律优先用有颗粒感的乐器，垫音/低音/打击不当主奏
   const melodic = p => !['pad', 'bass', 'drum', 'muyu', 'gong'].includes(p);
   const lead = pal.find(melodic) || pal[0] || 'guzheng';
-  const harm = pal.find(p => p !== lead && !isPerc(p) && p !== 'bass' && p !== 'pad') || 'dizi';
-  const out = [{ role: 'lead', inst: lead }, { role: 'harm', inst: harm }];
-  if (pal.includes('pad') || mood.id === 'chanyi') out.push({ role: 'pad', inst: 'pad' });
-  if (pal.includes('bass')) out.push({ role: 'bass', inst: 'bass' });
+  const out = [{ role: 'lead', inst: lead }];
+  const harm = pal.find(p => p !== lead && !isPerc(p) && p !== 'bass' && p !== 'pad');
+  if (harm) out.push({ role: 'harm', inst: harm });
+  if (pal.includes('pad')) out.push({ role: 'pad', inst: 'pad' });
+  out.push({ role: 'bass', inst: 'bass' });
   if (pal.includes('drum')) out.push({ role: 'perc', inst: 'drum' });
-  else if (mood.id === 'chanyi') out.push({ role: 'perc', inst: 'muyu' });
   return out;
 }
 
-// 清洗外部传入（大模型）的音轨：合法角色/乐器、最多 6 轨、主旋律唯一
+// 每个角色允许的数量：副旋律最多 2 个（音区错开），其余各 1
+const ROLE_QUOTA = { lead: 1, harm: 2, pad: 2, bass: 1, perc: 1, amb: 1 };
+const MAX_TRACKS = 6;
+
 export function normalizeTracks(list, mood) {
   const ok = [];
-  const used = new Set();
+  const count = {};
+  const seenInst = new Set();
   for (const t of Array.isArray(list) ? list : []) {
     if (!t) continue;
     const role = ROLE_IDS.includes(t.role) ? t.role : null;
     const inst = INSTRUMENTS[t.inst] ? t.inst : null;
     if (!role || !inst) continue;
-    if (role === 'lead' && used.has('lead')) continue;
+    if ((count[role] || 0) >= (ROLE_QUOTA[role] || 1)) continue;
+    if (seenInst.has(inst)) continue; // 同一乐器不重复出现
     if (role === 'lead' && (isAmb(inst) || isPerc(inst))) continue;
     if (role !== 'amb' && isAmb(inst)) continue;
     if (role === 'amb' && !isAmb(inst)) continue;
     if (role === 'perc' && !isPerc(inst) && inst !== 'gong') continue;
-    used.add(role);
+    count[role] = (count[role] || 0) + 1;
+    seenInst.add(inst);
     ok.push({ role, inst });
-    if (ok.length >= 6) break;
+    if (ok.length >= MAX_TRACKS) break;
   }
   if (!ok.some(t => t.role === 'lead')) {
     const fallback = defaultTracks(mood).find(t => t.role === 'lead');
@@ -259,7 +300,17 @@ export function compose(opts = {}) {
         bars: sec.bars, register: [leadReg[0], leadReg[0] + 5],
         kind: 'intro', density: density * 0.55, mode, contour,
       });
-      for (const n of intro.filter(x => x.dur >= 1).slice(0, 3)) {
+      // 每个小节最多取一个点音，避免引子后半段空着
+      const seen = new Set();
+      const picked = [];
+      for (const n of intro.filter(x => x.dur >= 0.8)) {
+        const bar = Math.floor(n.t / 4);
+        if (seen.has(bar)) continue;
+        seen.add(bar);
+        picked.push(n);
+        if (picked.length >= Math.min(3, sec.bars)) break;
+      }
+      for (const n of picked) {
         push(leadTrack, { ...n, t: n.t + beatOf(sec.startBar), vel: n.vel * 0.6 });
       }
       continue;
@@ -268,9 +319,20 @@ export function compose(opts = {}) {
     if (name === '尾') {
       const last = sec.startBar + sec.bars - 1;
       const cad = rng.pick(stepsWithDegree(mode.tonic, leadReg[0] + 1, leadReg[1] - 1)) || leadReg[0] + 2;
+      // 尾段前半：一个短经过音，避免整段只有一个长音
+      const passing = stepsWithDegree(stepDegree(cad) + 3, leadReg[0], leadReg[1])[0];
+      if (passing != null && sec.bars >= 2) {
+        push(leadTrack, {
+          t: beatOf(sec.startBar) + 1.5, dur: 1.2,
+          step: clamp(passing, leadReg[0], leadReg[1]), vel: 0.52,
+        });
+      }
       push(leadTrack, { t: beatOf(last), dur: 6, step: cad, vel: 0.72, cadence: true });
-      if (bassTrack) push(bassTrack, { t: beatOf(last), dur: 6, step: cad - 5, vel: 0.5 });
-      for (const pt of padTracks) push(pt, { t: beatOf(sec.startBar), dur: sec.bars * 4, step: cad - 5, vel: 0.35 });
+      if (bassTrack) push(bassTrack, { t: beatOf(sec.startBar), dur: sec.bars * 4 - 0.4, step: cad - 5, vel: 0.46 });
+      for (const pt of padTracks) {
+        push(pt, { t: beatOf(sec.startBar), dur: sec.bars * 4, step: cad - 5, vel: 0.32 });
+        if (rng.chance(0.6)) push(pt, { t: beatOf(sec.startBar), dur: sec.bars * 4, step: cad, vel: 0.2 });
+      }
       if (percTrack && (percTrack.inst === 'gong' || INSTRUMENTS[percTrack.inst]?.family === 'metal')) {
         push(percTrack, { t: beatOf(last), dur: 4, step: null, vel: 0.5 });
       }
@@ -279,27 +341,31 @@ export function compose(opts = {}) {
 
     // 起承转合
     let phrase;
+    // genPhrase 返回的是「从 0 开始」的相对时间，必须整体平移到本段落起点
+    const offset = beatOf(sec.startBar);
+    const shift = arr => arr.map(n => ({ ...n, t: n.t + offset }));
     if (name === '起') {
-      phrase = genPhrase(rng, { bars: sec.bars, register: leadReg, kind: 'theme', density, mode, contour });
-      phraseMemo.theme = phrase.map(n => ({ ...n }));
+      phrase = shift(genPhrase(rng, { bars: sec.bars, register: leadReg, kind: 'theme', density, mode, contour }));
+      phraseMemo.theme = phrase.map(n => ({ ...n, t: n.t - offset }));
     } else if (name === '承') {
       const base = phraseMemo.theme || [];
-      phrase = base.map(n => ({
-        ...n, t: n.t + beatOf(sec.startBar),
+      phrase = shift(base.map(n => ({
+        ...n,
         step: clamp(n.step + rng.pick([1, 2, 2, -1]), leadReg[0], leadReg[1]),
         vel: n.vel * 0.94,
-      }));
+      })));
     } else if (name === '转' || name === '展') {
-      phrase = genPhrase(rng, {
+      phrase = shift(genPhrase(rng, {
         bars: sec.bars, register: [clamp(leadReg[0] + 2, 0, 12), leadReg[1] + 1],
         kind: 'contrast', density: Math.min(1, density * 1.18), mode, contour,
-      });
-    } else {
-      const base = phraseMemo.theme || genPhrase(rng, { bars: sec.bars, register: leadReg, kind: 'theme', density, mode, contour });
-      phrase = base.map(n => ({
-        ...n, t: n.t + beatOf(sec.startBar),
-        step: clamp(n.step + (n.cadence ? 0 : rng.pick([0, 0, 1])), leadReg[0], leadReg[1]),
       }));
+    } else {
+      const base = phraseMemo.theme ||
+        genPhrase(rng, { bars: sec.bars, register: leadReg, kind: 'theme', density, mode, contour });
+      phrase = shift(base.map(n => ({
+        ...n,
+        step: clamp(n.step + (n.cadence ? 0 : rng.pick([0, 0, 1])), leadReg[0], leadReg[1]),
+      })));
     }
 
     // 倚音
@@ -395,10 +461,20 @@ export function compose(opts = {}) {
     }
   }
 
-  // 人声化微扰
+  // 人声化微扰：允许轻微抢拍/拖拍，但绝不能跨过小节线，
+  // 否则低密度时会出现「看起来空着」的小节
   for (const n of notes) {
     if (n.step == null) { n.t = Math.max(0, n.t + rng.gauss() * 0.01); continue; }
-    n.t = Math.max(0, n.t + rng.gauss() * 0.013);
+    if (!n.cadence) {
+      const bar = Math.floor(n.t / 4);
+      let t = Math.max(0, n.t + rng.gauss() * 0.013);
+      if (Math.floor(t / 4) !== bar) {
+        // 越界就吸附回整拍，保持小结归属不变
+        t = Math.round(t * 2) / 2;
+        if (Math.floor(t / 4) !== bar) t = n.t;
+      }
+      n.t = t;
+    }
     n.dur = Math.max(0.12, n.dur * (1 + rng.gauss() * 0.05));
     n.vel = clamp(n.vel * (1 + rng.gauss() * 0.06), 0.15, 1);
   }

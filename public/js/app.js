@@ -102,6 +102,9 @@ function closeGen() {
   genState.open = false;
   const el = $('genOverlay');
   if (el) el.hidden = true;
+  // 弹窗关闭后，侧栏那条细进度条也一并收起
+  const bar = $('genProgress')?.firstElementChild;
+  if (bar) setTimeout(() => { bar.style.width = '0'; }, 120);
 }
 
 const debounce = (fn, ms) => (...args) => { clearTimeout(recomposeTimer); recomposeTimer = setTimeout(() => fn(...args), ms); };
@@ -133,6 +136,26 @@ function initControls() {
       <span class="play">▶</span>
     </button>`).join('');
   syncUI();
+}
+
+let pendingDirty = false;
+function flagPending() {
+  pendingDirty = true;
+  const btn = $('btnGenerate');
+  btn.classList.add('pending');
+  const label = btn.querySelector('span');
+  if (label) label.textContent = '应用修改';
+  $('paramHint').textContent = '已修改，点左侧按钮生效';
+  $('paramHint').classList.add('dirty');
+}
+function clearPending() {
+  pendingDirty = false;
+  const btn = $('btnGenerate');
+  btn.classList.remove('pending');
+  const label = btn.querySelector('span');
+  if (label) label.textContent = '生成编曲';
+  $('paramHint').textContent = '改动需重新生成';
+  $('paramHint').classList.remove('dirty');
 }
 
 function syncUI() {
@@ -275,6 +298,7 @@ async function generate() {
     setGen(1, '完成', `${piece.meta.bars} 小节 · ${fmt(piece.meta.duration)}`);
     await new Promise(r => setTimeout(r, 260));
     closeGen();
+    clearPending();
     if (window.innerWidth < 1120) {
       setTimeout(() => document.querySelector('.stage').scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     }
@@ -294,12 +318,18 @@ async function generate() {
   }
 }
 
-async function buildPiece({ seed, engine, title, reason, onProgress }) {
-  const p = compose({
-    mood: settings.mood, mode: settings.mode, key: settings.key,
-    bpm: settings.bpm, density: settings.density / 100, bars: settings.bars,
-    loop: settings.loop, seed, tracks: settings.tracks, engine, title, reason,
-  });
+async function buildPiece({ seed, engine, title, reason, onProgress, mood, mode, key, bpm, density, bars, loop, tracks }) {
+  const use = {
+    mood: mood ?? settings.mood,
+    mode: mode ?? settings.mode,
+    key: key ?? settings.key,
+    bpm: bpm ?? settings.bpm,
+    density: (density ?? settings.density) / 100,
+    bars: bars ?? settings.bars,
+    loop: loop ?? settings.loop,
+    tracks: tracks ?? settings.tracks,
+  };
+  const p = compose({ ...use, seed, engine, title, reason });
   await player.build(p, onProgress);
   piece = p;
   settings.tracks = p.spec;
@@ -313,20 +343,34 @@ async function buildPiece({ seed, engine, title, reason, onProgress }) {
   saveSettings();
 }
 
-const recompose = debounce(async () => {
+// tracksOnly：换乐器 / 加删轨道时用，沿用上次生成时的参数
+const recompose = debounce(async (tracksOnly = false) => {
   if (!piece || busy) return;
   busy = true;
-  openGen('正在重排');
-  setGen(0.05, '按新参数重排…');
-  status('重排中…');
+  openGen(tracksOnly ? '正在换配器' : '正在重排');
+  setGen(0.05, tracksOnly ? '按新配器重排…' : '按新参数重排…');
+  status(tracksOnly ? '换配器中…' : '重排中…');
+  const m = piece.meta;
+  const args = tracksOnly
+    ? {
+        mood: m.mood, mode: m.mode, key: m.key, bpm: m.bpm,
+        density: Math.round(m.density * 100), bars: m.bars, loop: m.loop,
+        tracks: settings.tracks,
+      }
+    : {
+        mood: settings.mood, mode: settings.mode, key: settings.key, bpm: settings.bpm,
+        density: settings.density, bars: settings.bars, loop: settings.loop,
+        tracks: settings.tracks,
+      };
   try {
     await buildPiece({
-      seed: seedNum, engine: piece.meta.engine, title: piece.meta.title, reason: piece.meta.reason,
+      ...args,
+      seed: seedNum, engine: m.engine, title: m.title, reason: m.reason,
       onProgress: (p, phase) => setGen(0.05 + p * 0.95, phase === '合成' ? '合成音色…' : (phase ? phase + '…' : '合成音色…')),
     });
     setGen(1, '完成');
     await new Promise(r => setTimeout(r, 180));
-    status(`已按新参数重排 · ${piece.meta.bars} 小节 ${fmt(player.duration)}`);
+    status(`已${tracksOnly ? '按新配器' : '按新参数'}重排 · ${piece.meta.bars} 小节 ${fmt(player.duration)}`);
   } catch (e) {
     status('重排失败：' + e.message, 'err');
   } finally {
@@ -391,7 +435,7 @@ function renderMixer() {
       if (!role) return;
       const idx = settings.tracks.findIndex(x => x.role === role);
       if (idx >= 0) settings.tracks[idx] = { role, inst: sel.value };
-      recompose();
+      recompose(true);
     });
   });
   wrap.querySelectorAll('.vol').forEach(r => {
@@ -420,7 +464,7 @@ function renderMixer() {
       if (!t) return;
       if (t.role === 'lead') { toast('主旋律不能删除，可以换音色'); return; }
       settings.tracks = settings.tracks.filter(x => x.role !== t.role);
-      recompose();
+      recompose(true);
     });
   });
   syncAddMenu();
@@ -433,19 +477,25 @@ function applyVolumes() {
   }
 }
 
+const ROLE_QUOTA_UI = { harm: 2, pad: 2, bass: 1, perc: 1, amb: 1 };
 function syncAddMenu() {
-  const used = new Set(piece?.tracks.map(t => t.role) || []);
+  const count = {};
+  for (const t of piece?.tracks || []) count[t.role] = (count[t.role] || 0) + 1;
   const menu = $('addMenu');
   const label = { harm: '副旋律', pad: '铺底', bass: '低音', perc: '打击', amb: '氛围' };
-  menu.innerHTML = ROLE_IDS.filter(r => r !== 'lead').map(r =>
-    `<button data-role="${r}" ${used.has(r) ? 'disabled' : ''}>${label[r]}${used.has(r) ? ' · 已有' : ''}</button>`).join('');
+  menu.innerHTML = ROLE_IDS.filter(r => r !== 'lead').map(r => {
+    const full = (count[r] || 0) >= (ROLE_QUOTA_UI[r] || 1);
+    return `<button data-role="${r}" ${full ? 'disabled' : ''}>${label[r]}${full ? ' · 已满' : ''}</button>`;
+  }).join('');
   menu.querySelectorAll('button:not([disabled])').forEach(b => {
     b.addEventListener('click', () => {
       const role = b.dataset.role;
-      const inst = role === 'amb' ? 'rain' : role === 'perc' ? 'drum' : role === 'bass' ? 'bass' : 'dizi';
+      const usedInst = new Set((settings.tracks || []).map(t => t.inst));
+      const pool = optionsFor(role).filter(i => !usedInst.has(i));
+      const inst = pool[0] || optionsFor(role)[0];
       settings.tracks = [...(settings.tracks || []), { role, inst }];
       menu.hidden = true;
-      recompose();
+      recompose(true);
     });
   });
 }
@@ -804,7 +854,7 @@ function bind() {
   $('aiToggle').addEventListener('change', e => { settings.ai = e.target.checked; saveSettings(); });
   $('loopToggle').addEventListener('change', e => {
     settings.loop = e.target.checked; saveSettings();
-    if (piece) recompose(); else generate();
+    if (piece) flagPending(); else generate();
   });
 
   $('moodChips').addEventListener('click', e => {
@@ -814,20 +864,21 @@ function bind() {
     settings.bpm = m.bpm; settings.density = Math.round(m.density * 100);
     settings.tracks = defaultTracks(m);
     syncUI(); saveSettings();
-    if (piece) recompose(); else generate();
+    if (piece) flagPending(); else generate();
   });
 
-  const liveParam = () => { saveSettings(); syncUI(); if (piece) recompose(); };
-  $('bpm').addEventListener('input', () => { settings.bpm = +$('bpm').value; liveParam(); });
-  $('density').addEventListener('input', () => { settings.density = +$('density').value; liveParam(); });
-  $('bars').addEventListener('input', () => { settings.bars = +$('bars').value; liveParam(); });
-  $('mode').addEventListener('change', () => { settings.mode = +$('mode').value; liveParam(); });
-  $('key').addEventListener('change', () => { settings.key = $('key').value; liveParam(); });
+  // 参数改动只做标记，点「生成编曲」才真正重排
+  const markDirty = () => { saveSettings(); syncUI(); if (piece) flagPending(); };
+  $('bpm').addEventListener('input', () => { settings.bpm = +$('bpm').value; markDirty(); });
+  $('density').addEventListener('input', () => { settings.density = +$('density').value; markDirty(); });
+  $('bars').addEventListener('input', () => { settings.bars = +$('bars').value; markDirty(); });
+  $('mode').addEventListener('change', () => { settings.mode = +$('mode').value; markDirty(); });
+  $('key').addEventListener('change', () => { settings.key = $('key').value; markDirty(); });
   $('seed').addEventListener('input', e => { settings.seed = e.target.value; saveSettings(); });
   $('dice').addEventListener('click', () => {
     settings.seed = String(Math.floor(Math.random() * 999999));
     $('seed').value = settings.seed; saveSettings();
-    if (piece) { seedNum = +settings.seed; recompose(); }
+    if (piece) { seedNum = +settings.seed; flagPending(); }
   });
 
   $('btnGenerate').addEventListener('click', () => generate());

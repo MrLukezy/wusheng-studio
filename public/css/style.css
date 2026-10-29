@@ -490,3 +490,15 @@ kbd {
   color: var(--dim); border: 1px solid var(--line); background: rgba(255, 255, 255, .02); transition: .16s;
 }
 .gen-cancel:hover { color: var(--ink); border-color: var(--line-strong); }
+
+/* ---------- 待生效状态 ---------- */
+#paramHint.dirty { color: var(--gold-soft); }
+.primary.pending {
+  background: linear-gradient(160deg, #f7dcb0, #e0ab52);
+  box-shadow: 0 10px 26px -12px rgba(217, 164, 65, 1), inset 0 1px 0 rgba(255, 255, 255, .6);
+  animation: pendingPulse 2s ease-in-out infinite;
+}
+@keyframes pendingPulse {
+  0%, 100% { box-shadow: 0 10px 26px -12px rgba(217, 164, 65, .9), inset 0 1px 0 rgba(255, 255, 255, .6); }
+  50% { box-shadow: 0 10px 30px -10px rgba(240, 205, 140, 1), inset 0 1px 0 rgba(255, 255, 255, .6); }
+}

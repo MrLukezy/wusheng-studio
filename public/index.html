@@ -49,7 +49,7 @@
       </section>
 
       <section class="card">
-        <div class="card-head"><h2>参数</h2><span class="muted" id="paramHint">改动即时重排</span></div>
+        <div class="card-head"><h2>参数</h2><span class="muted" id="paramHint">改动需重新生成</span></div>
         <div class="field-row">
           <label class="field"><span>调式</span><select id="mode"></select></label>
           <label class="field"><span>主音</span><select id="key"></select></label>
@@ -182,6 +182,9 @@
         <p>打开后去掉引子与尾声，整首首尾相接：末小节的低音落到<b>回旋音</b>（纯五度就落属音，否则回主音），旋律提前收尾留一口气。渲染时多算 4 秒尾巴再<b>折回开头</b>，所以循环点没有断口，导出的 WAV 本身就是无缝循环。</p>
         <h3>音色</h3>
         <p>17 种音色全部逐采样合成：古筝/琵琶/古琴用弦模型，二胡用锯齿波族加弓噪，笛/箫/埙用加法合成，编钟/扬琴/锣用非谐分音，雨声/风声是连续纹理层。</p>
+        <h3>配器</h3>
+        <p>每种曲风有一套 4–6 轨的默认配器，覆盖不同音色又保持清晰。例如江湖是「琵琶主奏 + 二胡应答 + 唢呐点染 + 鼓 + 低音」，禅意是「编钟 + 古琴 + 箫 + 木鱼 + 低音」。两轨副旋律会自动错开音区与节奏。</p>
+        <p>参数改动不会立刻重排，点「生成编曲」才生效；只有换乐器、增删轨道这类明确动作会即时重排。</p>
       </div>
       <div>
         <h3>两层「AI」</h3>
