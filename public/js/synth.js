@@ -32,6 +32,19 @@ export class Biquad {
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const TAU = Math.PI * 2;
 
+// 查表正弦：比 Math.sin 快数倍，热点内循环用它
+const SIN_N = 2048;
+const SIN_TAB = new Float32Array(SIN_N + 1);
+for (let i = 0; i <= SIN_N; i++) SIN_TAB[i] = Math.sin(TAU * i / SIN_N);
+const SIN_SCALE = SIN_N / TAU;
+function fsin(x) {
+  let p = (x * SIN_SCALE) % SIN_N;
+  if (p < 0) p += SIN_N;
+  const i = p | 0;
+  const f = p - i;
+  return SIN_TAB[i] + (SIN_TAB[i + 1] - SIN_TAB[i]) * f;
+}
+
 function normalize(buf, target = 1) {
   let peak = 0;
   for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
@@ -121,7 +134,7 @@ function dizi(freq, dur, vel, rng) {
     let s = 0;
     for (let h = 1; h <= 7; h++) {
       phase[h] += TAU * freq * h * vib / SR;
-      s += Math.sin(phase[h]) * amp[h];
+      s += fsin(phase[h]) * amp[h];
     }
     const br = noise.process(rng.next() * 2 - 1) * 0.05 * env;
     const ch = t < 0.03 ? hiss.process(rng.next() * 2 - 1) * 0.5 * (1 - t / 0.03) : 0;
@@ -145,7 +158,7 @@ function xun(freq, dur, vel, rng) {
     const env = atk * rel * (0.85 + 0.15 * Math.exp(-t / 0.4));
     const vib = 1 + 0.005 * clamp((t - 0.25) / 0.6, 0, 1) * Math.sin(TAU * vibRate * t);
     let s = 0;
-    for (let h = 0; h < 4; h++) { ph[h] += TAU * freq * (h + 1) * vib / SR; s += Math.sin(ph[h]) * amps[h]; }
+    for (let h = 0; h < 4; h++) { ph[h] += TAU * freq * (h + 1) * vib / SR; s += fsin(ph[h]) * amps[h]; }
     const br = noise.process(rng.next() * 2 - 1) * 0.035 * env;
     out[i] = Math.tanh((s * 0.6 + br) * env * 1.2) * 0.8;
   }
@@ -169,7 +182,7 @@ function bianzhong(freq, dur, vel, rng) {
     for (let k = 0; k < partials.length; k++) {
       const [ratio, a, tau] = partials[k];
       ph[k] += TAU * freq * ratio * (1 + (k % 2 ? 0.0004 : -0.0003)) / SR;
-      s += Math.sin(ph[k]) * a * Math.exp(-t / tau);
+      s += fsin(ph[k]) * a * Math.exp(-t / tau);
     }
     out[i] = s * atk;
   }
@@ -185,6 +198,7 @@ function pad(freq, dur, vel, rng) {
   const n = Math.floor((dur + 1.5) * SR);
   const out = new Float32Array(n);
   const det = [-5, 0, 6].map(c => Math.pow(2, c / 1200));
+  const PAD_AMP = [0, 1, 0.308, 0.148, 0.087, 0.058, 0.042];
   const ph = det.map(() => rng.next() * TAU);
   const lfo = [0.17, 0.23, 0.31].map(f => rng.next() * TAU + f);
   const lp = new Biquad().lowpass(2600, 0.6);
@@ -197,7 +211,7 @@ function pad(freq, dur, vel, rng) {
     for (let v = 0; v < 3; v++) {
       const wob = 1 + 0.0022 * Math.sin(TAU * lfo[v] * t);
       let inner = 0;
-      for (let h = 1; h <= 8; h++) inner += Math.sin(ph[v] * h) / Math.pow(h, 1.7);
+      for (let h = 1; h <= 6; h++) inner += fsin(ph[v] * h) * PAD_AMP[h];
       ph[v] += TAU * freq * det[v] * wob / SR;
       s += inner;
     }
@@ -218,8 +232,8 @@ function bass(freq, dur, vel, rng) {
     const rel = t > dur ? Math.max(0, 1 - (t - dur) / 0.3) : 1;
     const env = atk * rel * (0.6 + 0.4 * Math.exp(-t / 0.35));
     let s = 0;
-    for (let h = 1; h <= 4; h++) { ph[h - 1] += TAU * freq * h / SR; s += Math.sin(ph[h - 1]) / (h * h); }
-    s += Math.sin(ph[0]) * 0.5;
+    for (let h = 1; h <= 4; h++) { ph[h - 1] += TAU * freq * h / SR; s += fsin(ph[h - 1]) / (h * h); }
+    s += fsin(ph[0]) * 0.5;
     out[i] = Math.tanh(lp.process(s) * 1.1) * env;
   }
   return fadeEdges(normalize(out), 1, 60);
@@ -235,7 +249,7 @@ function drum(freq, dur, vel, rng) {
     const t = i / SR;
     const f = 48 + 110 * Math.exp(-t / 0.045);
     phase += TAU * f / SR;
-    const body = Math.sin(phase) * Math.exp(-t / 0.17);
+    const body = fsin(phase) * Math.exp(-t / 0.17);
     const click = i < 0.01 * SR ? bp.process(rng.next() * 2 - 1) * Math.exp(-t / 0.006) * 0.6 : 0;
     out[i] = (body + click) * (0.55 + 0.45 * vel);
   }
@@ -253,7 +267,7 @@ function muyu(freq, dur, vel, rng) {
     const t = i / SR;
     const nz = bp.process(rng.next() * 2 - 1) * Math.exp(-t / 0.018);
     p += TAU * 980 / SR;
-    const tone = Math.sin(p) * Math.exp(-t / 0.035) * 0.5;
+    const tone = fsin(p) * Math.exp(-t / 0.035) * 0.5;
     out[i] = (nz * 0.9 + tone) * (0.6 + 0.4 * vel);
   }
   return fadeEdges(normalize(out), 0.5, 15);
@@ -282,7 +296,7 @@ function erhu(freq, dur, vel, rng) {
     let s = 0;
     for (let h = 1; h <= 13; h++) {
       ph[h] += TAU * freq * h * vib / SR;
-      s += Math.sin(ph[h]) / (h * 0.9 + 0.6);
+      s += fsin(ph[h]) / (h * 0.9 + 0.6);
     }
     const bow = noise.process(rng.next() * 2 - 1) * (0.05 + 0.03 * Math.sin(TAU * 7.3 * t));
     const x = s * 0.3 + bow;
@@ -337,7 +351,7 @@ function xiao(freq, dur, vel, rng) {
     const env = atk * rel * (0.8 + 0.2 * Math.exp(-t / 0.3));
     const vib = 1 + 0.004 * clamp((t - 0.2) / 0.5, 0, 1) * Math.sin(TAU * vibRate * t);
     let s = 0;
-    for (let h = 0; h < 5; h++) { ph[h] += TAU * freq * (h + 1) * vib / SR; s += Math.sin(ph[h]) * amps[h]; }
+    for (let h = 0; h < 5; h++) { ph[h] += TAU * freq * (h + 1) * vib / SR; s += fsin(ph[h]) * amps[h]; }
     const br = noise.process(rng.next() * 2 - 1) * 0.09;
     out[i] = (s * 0.5 + br) * env;
   }
@@ -386,7 +400,7 @@ function yangqin(freq, dur, vel, rng) {
     for (let k = 0; k < partials.length; k++) {
       const [ratio, a, tau] = partials[k];
       ph[k] += TAU * freq * ratio / SR;
-      s += Math.sin(ph[k]) * a * Math.exp(-t / tau);
+      s += fsin(ph[k]) * a * Math.exp(-t / tau);
     }
     out[i] = s * atk;
   }
@@ -412,7 +426,7 @@ function suona(freq, dur, vel, rng) {
     let s = 0;
     for (let h = 1; h <= 15; h += 2) {
       ph[h] += TAU * freq * h * vib / SR;
-      s += Math.sin(ph[h]) / h;
+      s += fsin(ph[h]) / h;
     }
     const x = form.process(s);
     out[i] = Math.tanh((s * 0.55 + x * 0.6) * 1.6) * env * 0.8;
@@ -435,7 +449,7 @@ function gong(freq, dur, vel, rng) {
     for (let k = 0; k < partials.length; k++) {
       const [ratio, a, tau] = partials[k];
       ph[k] += TAU * base * ratio / SR;
-      s += Math.sin(ph[k]) * a * Math.exp(-t / tau);
+      s += fsin(ph[k]) * a * Math.exp(-t / tau);
     }
     const nz = wash.process(rng.next() * 2 - 1) * Math.exp(-t / 0.35) * 0.5;
     out[i] = (s * 0.8 + nz) * atk;

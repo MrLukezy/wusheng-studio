@@ -437,3 +437,56 @@ kbd {
   .key .kn { font-size: 16px; }
   .foot { flex-direction: column; gap: 4px; }
 }
+
+/* ---------- 生成进度弹窗 ---------- */
+.gen-overlay {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: center;
+  background: rgba(4, 5, 8, .82); backdrop-filter: blur(8px);
+  animation: fadeIn .18s ease-out;
+}
+.gen-overlay[hidden] { display: none; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.gen-dialog {
+  width: min(340px, 88vw); padding: 28px 26px 22px; text-align: center;
+  background: linear-gradient(180deg, #16191f, #0d1015);
+  border: 1px solid var(--line-strong); border-radius: 18px;
+  box-shadow: 0 40px 90px -30px #000, inset 0 1px 0 rgba(255,255,255,.05);
+  animation: popIn .22s cubic-bezier(.2, .9, .3, 1.2);
+}
+@keyframes popIn { from { opacity: 0; transform: scale(.94) translateY(8px); } to { opacity: 1; transform: none; } }
+.gen-ring { position: relative; width: 112px; height: 112px; margin: 0 auto 16px; }
+.gen-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.gen-ring circle { fill: none; stroke-width: 5; stroke-linecap: round; }
+.ring-bg { stroke: rgba(255, 255, 255, .07); }
+.ring-fg {
+  stroke: url(#none); stroke: #d9a441;
+  stroke-dasharray: 326.7; stroke-dashoffset: 326.7;
+  transition: stroke-dashoffset .28s ease-out, stroke .3s;
+  filter: drop-shadow(0 0 6px rgba(217, 164, 65, .55));
+}
+.gen-pct {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  gap: 1px; font-family: var(--serif); font-size: 26px; color: var(--gold-soft);
+  font-variant-numeric: tabular-nums; letter-spacing: .02em; line-height: 1;
+}
+.gen-pct i { font-size: 12px; font-style: normal; color: var(--dim); margin-bottom: 6px; }
+.gen-dialog h3 {
+  margin: 0 0 4px; font-family: var(--serif); font-size: 16px;
+  letter-spacing: .16em; font-weight: 600; color: var(--ink);
+}
+.gen-phase { margin: 0 0 14px; font-size: 12px; color: var(--muted); min-height: 17px; }
+.gen-bar { height: 4px; border-radius: 3px; background: rgba(255, 255, 255, .07); overflow: hidden; }
+.gen-bar i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, #d9a441, #8fd6bd);
+  border-radius: 3px; transition: width .28s ease-out;
+}
+.gen-meta {
+  margin: 9px 0 0; font-size: 10.5px; color: var(--dim);
+  font-variant-numeric: tabular-nums; min-height: 14px; letter-spacing: .03em;
+}
+.gen-cancel {
+  margin-top: 16px; padding: 7px 20px; border-radius: 8px; font-size: 12px;
+  color: var(--dim); border: 1px solid var(--line); background: rgba(255, 255, 255, .02); transition: .16s;
+}
+.gen-cancel:hover { color: var(--ink); border-color: var(--line-strong); }

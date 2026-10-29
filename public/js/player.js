@@ -46,6 +46,8 @@ export class Player {
     this.loop = false;
     this.onended = null;
     this._raf = null;
+    this._worker = undefined;
+    this._jobId = 0;
   }
 
   async ensure() {
@@ -71,9 +73,78 @@ export class Player {
     return this.ctx;
   }
 
-  // 渲染整首曲子：每个音轨一条 AudioBuffer
+  // 渲染整首曲子：交给 Worker，主线程不阻塞
   async build(piece, onProgress) {
     await this.ensure();
+    if (this._worker === undefined) {
+      this._worker = null;
+      try {
+        this._worker = new Worker(new URL('./render-worker.js', import.meta.url), { type: 'module' });
+      } catch (e) { this._worker = null; }
+    }
+    if (this._worker) {
+      try {
+        return await this._buildInWorker(piece, onProgress);
+      } catch (e) {
+        console.warn('[player] worker 渲染失败，回退主线程', e);
+      }
+    }
+    return this._buildMain(piece, onProgress);
+  }
+
+  _buildInWorker(piece, onProgress) {
+    const worker = this._worker;
+    const id = ++this._jobId;
+    return new Promise((resolve, reject) => {
+      let onErrRef = null;
+      const onMsg = ev => {
+        const d = ev.data;
+        if (!d || d.id !== id) return;
+        if (d.type === 'progress') {
+          if (onProgress) onProgress(d.value, d.phase);
+        } else if (d.type === 'done') {
+          worker.removeEventListener('message', onMsg);
+          worker.removeEventListener('error', onErrRef);
+          // 逐轨建 AudioBuffer，每轨之间让出一帧，避免一次性卡住主线程
+          (async () => {
+          this.trackBuffers.clear();
+          for (let i = 0; i < d.buffers.length; i++) {
+            const v = d.buffers[i];
+            const buf = this.ctx.createBuffer(1, d.length, d.sampleRate);
+            buf.copyToChannel(new Float32Array(v.data), 0);
+            this.trackBuffers.set(v.id, buf);
+            if (onProgress) onProgress(0.96 + 0.04 * ((i + 1) / d.buffers.length), '装配');
+            if (i < d.buffers.length - 1) await new Promise(r => setTimeout(r, 0));
+          }
+          this.duration = d.duration;
+          this.loopLen = d.loopLen || 0;
+          this.musicalLen = d.loop ? d.loopLen / d.sampleRate
+            : Math.max(0, d.duration - 2.5 * (60 / piece.meta.bpm) - 1.6);
+          this.piece = piece;
+          this.gains = {};
+          for (const t of piece.tracks) this.gains[t.id] = t.gain ?? 0.7;
+          if (onProgress) onProgress(1, '完成');
+          resolve(this.duration);
+          })().catch(reject);
+        } else if (d.type === 'error') {
+          worker.removeEventListener('message', onMsg);
+          reject(new Error(d.message));
+        }
+      };
+      const onErr = ev => {
+        worker.removeEventListener('message', onMsg);
+        worker.removeEventListener('error', onErr);
+        reject(new Error('worker: ' + (ev.message || 'script error')));
+      };
+      onErrRef = onErr;
+      worker.addEventListener('message', onMsg);
+      worker.addEventListener('error', onErr);
+      worker.postMessage({ id, piece });
+    });
+  }
+
+  // 主线程兜底渲染（Worker 不可用时）
+  async _buildMain(piece, onProgress) {
     const secPerBeat = 60 / piece.meta.bpm;
     let endBeat = 0;
     for (const n of piece.notes) endBeat = Math.max(endBeat, n.t + n.dur);
@@ -101,19 +172,27 @@ export class Player {
       for (let i = 0; i < lim; i++) arr[i] += tex[i];
     }
 
+    // 按时间片让出：单音符可能耗时 200ms，绝不能攒满 24 个才 yield
     let done = 0;
+    let sliceStart = performance.now();
     const rng = new Rng(`${piece.meta.seed}|render`);
     for (const n of piece.notes) {
       const arr = arrays.get(n.track);
-      if (!arr) continue;
-      const freq = n.midi > 0 ? 440 * Math.pow(2, (n.midi - 69) / 12) : 110;
-      const buf = renderNote(n.inst, freq, n.dur * secPerBeat, n.vel, rng);
-      const start = Math.max(0, Math.round(n.t * secPerBeat * SR));
-      const g = n.vel * (INSTRUMENTS[n.inst]?.gain ?? 0.7) * 0.62;
-      const lim = Math.min(buf.length, total - start);
-      for (let i = 0; i < lim; i++) arr[start + i] += buf[i] * g;
+      if (arr) {
+        const freq = n.midi > 0 ? 440 * Math.pow(2, (n.midi - 69) / 12) : 110;
+        const buf = renderNote(n.inst, freq, n.dur * secPerBeat, n.vel, rng);
+        const start = Math.max(0, Math.round(n.t * secPerBeat * SR));
+        const g = n.vel * (INSTRUMENTS[n.inst]?.gain ?? 0.7) * 0.62;
+        const lim = Math.min(buf.length, total - start);
+        for (let i = 0; i < lim; i++) arr[start + i] += buf[i] * g;
+      }
       done++;
-      if (onProgress && done % 24 === 0) { onProgress(done / piece.notes.length); await new Promise(r => setTimeout(r, 0)); }
+      // 每 30ms 就让浏览器画一帧，进度条与动画都不卡
+      if (performance.now() - sliceStart > 30 || done === piece.notes.length) {
+        if (onProgress) onProgress(0.04 + 0.9 * (done / piece.notes.length), '合成');
+        await new Promise(r => setTimeout(r, 0));
+        sliceStart = performance.now();
+      }
     }
 
     if (loop) {
@@ -131,7 +210,7 @@ export class Player {
     this.piece = piece;
     this.gains = {};
     for (const t of piece.tracks) this.gains[t.id] = t.gain ?? 0.7;
-    if (onProgress) onProgress(1);
+    if (onProgress) onProgress(1, '完成');
     return this.duration;
   }
 

@@ -63,6 +63,47 @@ const hexA = (hex, a) => {
   const h = hex.replace('#', '');
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
 };
+/* ---------------- 生成进度弹窗 ---------------- */
+const GEN_PHASES = {
+  ai: '理解灵感',
+  compose: '编写乐曲',
+  synth: '合成音色',
+  mix: '混音导出',
+};
+const RING_LEN = 326.7;
+let genState = { open: false, startedAt: 0, value: 0, cancelled: false };
+
+function openGen(title = '正在编曲') {
+  const el = $('genOverlay');
+  if (!el) return;
+  genState = { open: true, startedAt: Date.now(), value: 0, cancelled: false };
+  $('genTitle').textContent = title;
+  $('genPhase').textContent = '准备中…';
+  $('genMeta').textContent = '';
+  $('genPct').innerHTML = '0<i>%</i>';
+  $('genRing').style.strokeDashoffset = RING_LEN;
+  $('genBar').style.width = '0%';
+  el.hidden = false;
+}
+function setGen(value, phase, meta) {
+  if (!genState.open) return;
+  const v = Math.max(genState.value, Math.min(1, value || 0)); // 只前进不后退
+  genState.value = v;
+  const pct = Math.round(v * 100);
+  $('genPct').innerHTML = pct + '<i>%</i>';
+  $('genRing').style.strokeDashoffset = RING_LEN * (1 - v);
+  $('genRing').style.stroke = v >= 1 ? '#5fc9a8' : '#d9a441';
+  $('genBar').style.width = (v * 100) + '%';
+  if (phase) $('genPhase').textContent = phase;
+  if (meta !== undefined) $('genMeta').textContent = meta;
+}
+function closeGen() {
+  if (!genState.open) return;
+  genState.open = false;
+  const el = $('genOverlay');
+  if (el) el.hidden = true;
+}
+
 const debounce = (fn, ms) => (...args) => { clearTimeout(recomposeTimer); recomposeTimer = setTimeout(() => fn(...args), ms); };
 
 /* ---------------- 控件初始化 ---------------- */
@@ -178,9 +219,13 @@ async function generate() {
   bar.style.width = '6%';
   let ai = null;
 
+  openGen('正在编曲');
+  setGen(0.02, '准备中…');
+
   try {
     if (s.ai && s.inspire.length >= 2) {
       status('AI 正在理解这段描述…');
+      setGen(0.06, 'AI 正在理解这段描述…', '大模型选调式、速度与配器');
       bar.style.width = '18%';
       const res = await callArrange(s.inspire);
       if (res.ok && res.data) {
@@ -190,6 +235,7 @@ async function generate() {
         settings.bars = ai.bars; settings.tracks = ai.tracks;
         settings.title = ai.title; settings.reason = ai.reason;
         bar.style.width = '55%';
+        setGen(0.3, '配器已确定', ai.tracks.map(t => INSTRUMENTS[t.inst]?.name || t.inst).join(' + '));
         status(`AI 已选：${ai.tracks.map(t => INSTRUMENTS[t.inst]?.name || t.inst).join(' + ')}`, 'ok');
       } else {
         status(`AI 未响应（${res.error || '未知'}），已用本地规则`, 'err');
@@ -211,18 +257,32 @@ async function generate() {
     settings.seed = String(seedNum);
     syncUI();
 
+    setGen(0.34, '编写乐曲…', `${settings.bars} 小节 · ${settings.bpm}BPM`);
+    await new Promise(r => setTimeout(r, 16));
+
     await buildPiece({
       seed: seedNum, engine: ai ? 'llm' : 'rule',
       title: settings.title, reason: settings.reason,
-      onProgress: p => { bar.style.width = (55 + p * 45) + '%'; },
+      onProgress: (p, phase) => {
+        bar.style.width = (55 + p * 45) + '%';
+        const v = 0.34 + p * 0.66;
+        if (phase === '合成') setGen(v, '合成音色…', '');
+        else if (phase === '混音') setGen(v, '混音…', '');
+        else if (phase) setGen(v, phase + '…', '');
+        else setGen(v, '合成音色…', '');
+      },
     });
     bar.style.width = '100%';
+    setGen(1, '完成', `${piece.meta.bars} 小节 · ${fmt(piece.meta.duration)}`);
+    await new Promise(r => setTimeout(r, 260));
+    closeGen();
     if (window.innerWidth < 1120) {
       setTimeout(() => document.querySelector('.stage').scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     }
     if (!ai && settings.inspire) toast('已用本地规则生成');
   } catch (e) {
     console.error(e);
+    closeGen();
     status('生成失败：' + e.message, 'err');
     toast('生成失败：' + e.message, 4000);
   } finally {
@@ -252,12 +312,25 @@ async function buildPiece({ seed, engine, title, reason, onProgress }) {
 
 const recompose = debounce(async () => {
   if (!piece || busy) return;
+  busy = true;
+  openGen('正在重排');
+  setGen(0.05, '按新参数重排…');
   status('重排中…');
   try {
-    await buildPiece({ seed: seedNum, engine: piece.meta.engine, title: piece.meta.title, reason: piece.meta.reason });
+    await buildPiece({
+      seed: seedNum, engine: piece.meta.engine, title: piece.meta.title, reason: piece.meta.reason,
+      onProgress: (p, phase) => setGen(0.05 + p * 0.95, phase === '合成' ? '合成音色…' : (phase ? phase + '…' : '合成音色…')),
+    });
+    setGen(1, '完成');
+    await new Promise(r => setTimeout(r, 180));
     status(`已按新参数重排 · ${piece.meta.bars} 小节 ${fmt(player.duration)}`);
-  } catch (e) { status('重排失败：' + e.message, 'err'); }
-}, 380);
+  } catch (e) {
+    status('重排失败：' + e.message, 'err');
+  } finally {
+    closeGen();
+    busy = false;
+  }
+}, 420);
 
 /* ---------------- 渲染 ---------------- */
 function renderAll() {
@@ -755,6 +828,14 @@ function bind() {
   });
 
   $('btnGenerate').addEventListener('click', () => generate());
+  $('genCancel').addEventListener('click', () => {
+    genState.cancelled = true;
+    closeGen();
+    player.pause();
+    toast('已取消生成');
+    busy = false;
+    $('btnGenerate').disabled = false;
+  });
   $('btnPlay').addEventListener('click', togglePlay);
   $('btnStop').addEventListener('click', stopAll);
   $('btnLoop').addEventListener('click', () => {
