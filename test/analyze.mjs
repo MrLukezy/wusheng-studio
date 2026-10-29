@@ -1,6 +1,6 @@
 // Node 侧自检：音高、时值、编曲结构、WAV 头
 import { compose } from '../public/js/composer.js';
-import { renderNote, INSTRUMENTS } from '../public/js/synth.js';
+import { renderNote, renderAmbience, INSTRUMENTS } from '../public/js/synth.js';
 import { Rng } from '../public/js/rng.js';
 import { encodeWav } from '../public/js/wav.js';
 import { encodeMidi } from '../public/js/midi.js';
@@ -24,12 +24,13 @@ const ok = (cond, msg, extra = '') => {
 
 console.log('\n[1] 音高校验（Goertzel 主频检测）');
 for (const id of Object.keys(INSTRUMENTS)) {
+  if (!INSTRUMENTS[id].fn) continue; // 氛围层另测
   const midi = 60; // C4
   const f = 440 * Math.pow(2, (midi - 69) / 12);
   const buf = renderNote(id, f, 0.8, 0.9, new Rng(42));
   const at = goertzel(buf, f), up = goertzel(buf, f * 1.0595), down = goertzel(buf, f * 0.9439);
   const dur = (buf.length / SR).toFixed(2);
-  if (id === 'drum' || id === 'muyu') {
+  if (id === 'drum' || id === 'muyu' || id === 'gong') {
     // 无音高打击乐：只查能量与衰减
     const half = Math.floor(buf.length / 2);
     ok(peak(buf) > 0.5 && peak(buf.slice(half)) < peak(buf.slice(0, half)) * 0.6,
@@ -37,6 +38,13 @@ for (const id of Object.keys(INSTRUMENTS)) {
     continue;
   }
   ok(at > up && at > down, `${INSTRUMENTS[id].name.padEnd(4)} 基频占优`, `${at.toFixed(4)} vs ${up.toFixed(4)}/${down.toFixed(4)}, ${dur}s`);
+}
+
+console.log('\n[1b] 氛围层');
+for (const id of ['rain', 'wind']) {
+  const tex = renderAmbience(id, 3, new Rng(3));
+  let p = 0; for (const v of tex) p = Math.max(p, Math.abs(v));
+  ok(tex.length === 3 * 44100 && p > 0.2 && p <= 1, `${id} 纹理`, `${(tex.length / 44100).toFixed(1)}s peak=${p.toFixed(2)}`);
 }
 
 console.log('\n[2] 五声跨八度映射');

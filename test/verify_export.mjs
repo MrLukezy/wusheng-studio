@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import { launch, OUT_DIR, BASE } from './_browser.mjs';
 import { compose } from '../public/js/composer.js';
 
-const params = { seed: 424242, mood: 'jianghu', mode: 3, key: 'D', bpm: 90, density: 70, len: 'short' };
+const params = { seed: 424242, mood: 'jianghu', mode: 3, key: 'D', bpm: 90, density: 70, bars: 16 };
 const hash = `#seed=${params.seed}&mood=${params.mood}&mode=${params.mode}&key=${params.key}`
-  + `&bpm=${params.bpm}&density=${params.density}&len=${params.len}`;
+  + `&bpm=${params.bpm}&density=${params.density}&bars=${params.bars}`;
 
 const browser = await launch();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
@@ -42,7 +42,7 @@ console.log(`WAV: ${riff} ch=${ch} rate=${rate} bits=${bits} frames=${nFrames} `
 // ---- 用同一参数重算乐谱 ----
 const piece = compose({
   mood: params.mood, mode: params.mode, key: params.key,
-  bpm: params.bpm, density: params.density / 100, length: params.len, seed: params.seed,
+  bpm: params.bpm, density: params.density / 100, bars: params.bars, seed: params.seed,
 });
 console.log(`乐谱: 《${piece.meta.title}》 ${piece.meta.modeName} ${piece.meta.key} `
   + `${piece.meta.bpm}BPM ${piece.notes.length} 音符`);

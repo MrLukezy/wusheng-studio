@@ -1,6 +1,6 @@
 // Web Audio 播放器 + 离线渲染（导出与试听共用同一套合成）
 import { SR } from './theory.js';
-import { renderNote, INSTRUMENTS } from './synth.js';
+import { renderNote, renderAmbience, INSTRUMENTS } from './synth.js';
 import { Rng } from './rng.js';
 
 const TAIL_BEATS = 2.5;
@@ -85,6 +85,16 @@ export class Player {
     const trackIds = piece.tracks.map(t => t.id);
     const arrays = new Map();
     for (const id of trackIds) arrays.set(id, new Float32Array(total));
+
+    // 氛围轨：整段纹理，一次渲染
+    const amb = piece.ambience || [];
+    for (const a of amb) {
+      const arr = arrays.get(a.track);
+      if (!arr) continue;
+      const tex = renderAmbience(a.inst, total / SR, new Rng(`${piece.meta.seed}|amb|${a.inst}`));
+      const lim = Math.min(tex.length, total);
+      for (let i = 0; i < lim; i++) arr[i] += tex[i];
+    }
 
     let done = 0;
     const rng = new Rng(`${piece.meta.seed}|render`);
@@ -239,6 +249,13 @@ export class Player {
 
     const arrays = new Map();
     for (const t of piece.tracks) arrays.set(t.id, new Float32Array(ctx.length));
+    for (const a of (piece.ambience || [])) {
+      const arr = arrays.get(a.track);
+      if (!arr) continue;
+      const tex = renderAmbience(a.inst, ctx.length / SR, new Rng(`${piece.meta.seed}|amb|${a.inst}`));
+      const lim = Math.min(tex.length, arr.length);
+      for (let i = 0; i < lim; i++) arr[i] += tex[i];
+    }
     const rng = new Rng(`${piece.meta.seed}|render`);
     for (const n of piece.notes) {
       const arr = arrays.get(n.track);

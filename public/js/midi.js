@@ -33,6 +33,7 @@ export function encodeMidi(piece) {
 
   // 1) 每个音轨一条
   for (const t of piece.tracks) {
+    if (!notes.some(n => n.track === t.id)) continue; // 氛围轨没有音符，跳过
     const ch = CHANNEL[t.id] ?? 0;
     const evs = [];
     const first = notes.find(n => n.track === t.id);

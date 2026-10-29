@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>五声工坊 · 宫商角徵羽 AI 编曲</title>
-<meta name="description" content="用宫商角徵羽五声音阶做音乐：纯前端合成古筝、笛、埙、编钟，AI 规则编曲，一键导出 WAV / MIDI。">
+<meta name="description" content="用宫商角徵羽五声音阶做音乐：17 种纯合成音色、大模型理解灵感、算法编曲，一键导出 WAV / MIDI。">
 <meta name="theme-color" content="#0a0c10">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230a0c10'/><text x='32' y='45' font-size='38' text-anchor='middle' fill='%23d9a441' font-family='serif'>五</text></svg>">
 <link rel="stylesheet" href="css/style.css">
@@ -21,6 +21,7 @@
       </div>
     </div>
     <nav class="bar-nav">
+      <span class="engine-badge" id="engineBadge" hidden></span>
       <button class="ghost" id="btnTheory">乐理与算法</button>
       <button class="ghost" id="btnShare">复制分享链接</button>
     </nav>
@@ -30,26 +31,37 @@
     <aside class="side">
       <section class="card">
         <div class="card-head"><h2>灵感</h2><span class="dot"></span></div>
-        <p class="tip">写一句画面，算法会解析情绪、定调与配器。</p>
-        <textarea id="inspire" rows="3" placeholder="例：月下松风，一个人走夜路"></textarea>
+        <p class="tip">写一句画面，AI 会决定调式、速度与配器。</p>
+        <textarea id="inspire" rows="3" placeholder="例：雨夜独处，二胡为主，加点雨声，别太吵"></textarea>
+
+        <label class="ai-row">
+          <span class="ai-text"><b>AI 理解</b><em>把描述交给大模型，自动挑音色</em></span>
+          <input type="checkbox" id="aiToggle" class="switch" checked>
+        </label>
+
         <div class="chips" id="moodChips"></div>
+
+        <button class="primary big" id="btnGenerate">
+          <span>生成编曲</span><kbd>G</kbd>
+        </button>
+        <div class="gen-progress" id="genProgress"><i></i></div>
+        <p class="gen-status" id="genStatus"></p>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>参数</h2><span class="muted" id="paramHint">改动即时重排</span></div>
         <div class="field-row">
           <label class="field"><span>调式</span><select id="mode"></select></label>
           <label class="field"><span>主音</span><select id="key"></select></label>
         </div>
-        <div class="field-row">
-          <label class="field range"><span>速度 <b id="bpmVal">68</b></span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
-          <label class="field range"><span>密度 <b id="densityVal">55%</b></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
-        </div>
-        <label class="field"><span>篇幅</span><select id="length"></select></label>
+        <label class="field range"><span>速度 <b id="bpmVal">68</b> BPM</span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
+        <label class="field range"><span>密度 <b id="densityVal">55%</b></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
+        <label class="field range"><span>长度 <b id="barsVal">20</b> 小节 <em id="durHint">≈ 1:10</em></span><input type="range" id="bars" min="8" max="48" step="1" value="20"></label>
         <div class="field-row seed">
           <label class="field"><span>种子</span><input id="seed" inputmode="numeric" placeholder="随机"></label>
           <button class="dice" id="dice" title="换一个种子">🎲</button>
         </div>
-        <button class="primary big" id="btnGenerate"><span>生成编曲</span><kbd>G</kbd></button>
-        <div class="gen-progress" id="genProgress"><i></i></div>
       </section>
-
 
       <section class="card">
         <div class="card-head"><h2>作品库</h2><span class="muted" id="libCount">0</span></div>
@@ -74,7 +86,8 @@
       <div class="now">
         <div class="now-main">
           <h2 id="title">还没有曲子</h2>
-          <p id="desc">选一个情绪，或直接点「生成编曲」。</p>
+          <p id="desc">写一句灵感，或直接点「生成编曲」。</p>
+          <p class="reason" id="reason" hidden></p>
         </div>
         <div class="now-meta">
           <div><b id="mTempo">—</b><span>BPM</span></div>
@@ -84,17 +97,17 @@
         </div>
       </div>
 
-      <div class="transport">
-        <div class="tgroup">
-          <button class="icon" id="btnPlay" title="播放 / 暂停（空格）">▶</button>
-          <button class="icon" id="btnStop" title="停止">■</button>
-          <button class="pill" id="btnLoop" title="循环">循环</button>
+      <div class="actionbar">
+        <div class="ab-group">
+          <button class="btn-play" id="btnPlay"><i>▶</i><span>播放</span></button>
+          <button class="btn-square" id="btnStop" title="停止">■</button>
+          <button class="btn-ghost" id="btnLoop">循环</button>
+          <div class="time"><span id="tNow">0:00</span><em>/</em><span id="tTotal">0:00</span></div>
         </div>
-        <div class="time"><span id="tNow">0:00</span><em>/</em><span id="tTotal">0:00</span></div>
-        <div class="tgroup right">
-          <button class="pill" id="btnSave">保存作品</button>
-          <button class="pill" id="btnMidi">导出 MIDI</button>
-          <button class="pill accent" id="btnWav">导出 WAV</button>
+        <div class="ab-group right">
+          <button class="btn-ghost" id="btnSave">保存</button>
+          <button class="btn-outline" id="btnMidi"><i>⇩</i> MIDI</button>
+          <button class="btn-solid" id="btnWav"><i>⇩</i> WAV</button>
         </div>
       </div>
 
@@ -107,7 +120,17 @@
         <div class="tooltip" id="rollTip"></div>
       </div>
 
-      <div class="tracks" id="tracks"></div>
+      <section class="card mixer-card">
+        <div class="card-head">
+          <h2>音轨</h2>
+          <div class="mix-actions">
+            <span class="muted" id="mixCount"></span>
+            <button class="btn-mini" id="btnAddTrack">＋ 添加音轨</button>
+            <div class="add-menu" id="addMenu" hidden></div>
+          </div>
+        </div>
+        <div class="mixer" id="mixer"></div>
+      </section>
 
       <div class="keys-wrap">
         <div class="keys-head">
@@ -121,11 +144,11 @@
         </div>
         <div class="keys" id="keys"></div>
       </div>
+
       <section class="card timbre-card">
-        <div class="card-head"><h2>音色库</h2><span class="muted">点击试听 · 五声上行</span></div>
+        <div class="card-head"><h2>音色库</h2><span class="muted">点击试听 · 共 17 种</span></div>
         <div id="timbreList" class="timbre-strip"></div>
       </section>
-
     </section>
   </main>
 
@@ -150,21 +173,23 @@
           <tr><td>工尺</td><td>上</td><td>尺</td><td>工</td><td>六</td><td>五</td></tr>
         </table>
         <h3>五种调式</h3>
-        <p>同一组五声，换主音即成不同调式：<b>宫</b>堂正、<b>商</b>清冽、<b>角</b>摇曳、<b>徵</b>热烈、<b>羽</b>幽远。平台里的「调式」改的是落音重心，不是音阶本身。</p>
+        <p>同一组五声，换主音即成不同调式：<b>宫</b>堂正、<b>商</b>清冽、<b>角</b>摇曳、<b>徵</b>热烈、<b>羽</b>幽远。</p>
+        <h3>音色</h3>
+        <p>17 种音色全部逐采样合成：古筝/琵琶/古琴用弦模型，二胡用锯齿波族加弓噪，笛/箫/埙用加法合成，编钟/扬琴/锣用非谐分音，雨声/风声是连续纹理层。</p>
       </div>
       <div>
-        <h3>编曲算法</h3>
-        <p>不是神经网络，而是可复现的规则生成器：</p>
+        <h3>两层「AI」</h3>
+        <p><b>1. 语言层（可选）</b>：把描述发给大模型，由它决定调式、速度、密度、长度和配器。结果会缓存，失败自动回退到本地规则。</p>
+        <p><b>2. 编曲层（本地）</b>：可复现的规则生成器，负责动机、曲式、配器与人声化：</p>
         <ol>
-          <li><b>解析</b>：灵感文字里的关键词映射到情绪、主音、调式。</li>
-          <li><b>动机</b>：在五声格内做受约束的随机游走，叠加拱形/上行/波浪音高轮廓。</li>
-          <li><b>发展</b>：起承转合，二句模进、三句对比、四句合尾；句尾按调式落主音或徵音。</li>
-          <li><b>配器</b>：主奏 + 应答 + 低音进行 + 打击，按密度与情绪取舍。</li>
-          <li><b>人声化</b>：时值、力度加高斯微扰，长音加颤音，避免机械感。</li>
+          <li><b>动机</b>：五声格内受约束游走，叠加拱形/上行/波浪轮廓。</li>
+          <li><b>发展</b>：起承转合，二句模进、三句对比、四句合尾；句尾奇句落徵、偶句落主音。</li>
+          <li><b>配器</b>：主奏 + 应答 + 铺底 + 低音进行 + 打击 + 氛围。</li>
+          <li><b>人声化</b>：时值力度加高斯微扰，长音加颤音，避免机械感。</li>
         </ol>
-        <p>同一 seed 永远得到同一首曲子；换 seed 即换一首。</p>
+        <p>同一 seed 永远得到同一首曲子，所以分享链接能还原，参数也可以随时改了重排。</p>
         <h3>合成与导出</h3>
-        <p>古筝用 Karplus-Strong 弦模型，笛用加法合成加气声，编钟用非谐分音，全部逐采样计算。试听与导出走同一套渲染，所以下载的 WAV 和你在页面上听到的是同一份声音。</p>
+        <p>试听与导出走同一条音频链（离线渲染复用实时播放的音频图），下载的 WAV 就是听到的那一版。</p>
       </div>
     </div>
   </div>
