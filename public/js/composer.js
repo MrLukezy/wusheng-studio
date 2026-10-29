@@ -37,8 +37,10 @@ function turnaroundDegree(mode) {
 
 export function defaultTracks(mood) {
   const pal = mood.palette || [];
-  const lead = pal[0] || 'guzheng';
-  const harm = pal.find(p => p !== lead && !isPerc(p) && p !== 'bass') || 'dizi';
+  // 主旋律优先用有颗粒感的乐器，垫音/低音/打击不当主奏
+  const melodic = p => !['pad', 'bass', 'drum', 'muyu', 'gong'].includes(p);
+  const lead = pal.find(melodic) || pal[0] || 'guzheng';
+  const harm = pal.find(p => p !== lead && !isPerc(p) && p !== 'bass' && p !== 'pad') || 'dizi';
   const out = [{ role: 'lead', inst: lead }, { role: 'harm', inst: harm }];
   if (pal.includes('pad') || mood.id === 'chanyi') out.push({ role: 'pad', inst: 'pad' });
   if (pal.includes('bass')) out.push({ role: 'bass', inst: 'bass' });
