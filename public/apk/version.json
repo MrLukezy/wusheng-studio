@@ -1,0 +1,10 @@
+{
+  "versionCode": 2,
+  "versionName": "1.0.1",
+  "url": "https://www.lukezystudio.cn/music/apk/wusheng-studio.apk",
+  "sizeBytes": 19507,
+  "sha256": "d76a801f871abd0dad6d3fec4f5c3114620754cb0710622622291472b01c2ab5",
+  "minSdk": 23,
+  "releasedAt": "2026-10-30T01:27:17+08:00",
+  "notes": "首个版本：纯 WebView 外壳，页面随服务端热更新。支持生成编曲、五声键盘、WAV/MIDI 导出到手机下载目录。"
+}

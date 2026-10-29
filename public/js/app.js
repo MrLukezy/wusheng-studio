@@ -848,6 +848,59 @@ async function audition(id) {
   } catch (e) { toast('试听失败：' + e.message); }
 }
 
+/* ---------------- APK / API 分栏 ---------------- */
+const API_BASE = location.origin + location.pathname.replace(/[^/]*$/, '');
+
+function fmtBytes(n) {
+  if (!n) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+
+let apkLoaded = false;
+async function loadApkInfo() {
+  if (apkLoaded) return;
+  apkLoaded = true;
+  try {
+    const res = await fetch('api/apk');
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || '无法读取');
+    $('apkName').textContent = d.app + ' · v' + d.versionName;
+    $('apkMeta').textContent = `${d.package} · Android ${d.minSdk}+ · ${fmtBytes(d.sizeBytes)}`;
+    const a = $('apkDownload');
+    a.href = d.downloadUrl;
+    a.textContent = `下载 APK（${fmtBytes(d.sizeBytes)}）`;
+    a.setAttribute('download', '');
+    $('apkPkg').textContent = d.package || d['package'];
+    $('apkVer').textContent = `v${d.versionName}（${d.versionCode}）`;
+    $('apkSize').textContent = `${fmtBytes(d.sizeBytes)}（${d.sizeBytes.toLocaleString()} 字节）`;
+    $('apkMin').textContent = `Android ${d.minSdk}+ · target ${d.targetSdk}`;
+    $('apkSha').textContent = d.sha256;
+    $('apiSample').textContent = JSON.stringify({
+      ok: true, app: d.app, package: d.package,
+      versionName: d.versionName, versionCode: d.versionCode,
+      sizeBytes: d.sizeBytes, sha256: d.sha256.slice(0, 16) + '…',
+      downloadUrl: d.downloadUrl,
+      hotUpdate: d.hotUpdate,
+    }, null, 2);
+  } catch (e) {
+    $('apkMeta').textContent = '版本信息读取失败：' + e.message;
+    $('apiSample').textContent = '读取失败：' + e.message;
+  }
+}
+
+function openApkModal(tab = 'download') {
+  $('apkModal').hidden = false;
+  switchApkTab(tab);
+  loadApkInfo();
+}
+function switchApkTab(name) {
+  document.querySelectorAll('#apkTabs .tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
+  document.querySelectorAll('#apkModal .tab-pane').forEach(p => p.hidden = p.dataset.pane !== name);
+  $('apiBase').textContent = API_BASE.replace(/\/$/, '');
+}
+
 /* ---------------- 事件 ---------------- */
 function bind() {
   $('inspire').addEventListener('input', e => { settings.inspire = e.target.value; saveSettings(); });
@@ -902,6 +955,13 @@ function bind() {
   $('btnMidi').addEventListener('click', exportMidi);
   $('btnSave').addEventListener('click', savePiece);
 
+  $('btnApk').addEventListener('click', () => openApkModal('download'));
+  $('closeApk').addEventListener('click', () => $('apkModal').hidden = true);
+  $('apkModal').addEventListener('click', e => { if (e.target.id === 'apkModal') $('apkModal').hidden = true; });
+  $('apkTabs').addEventListener('click', e => {
+    const t = e.target.closest('.tab');
+    if (t) switchApkTab(t.dataset.tab);
+  });
   $('btnTheory').addEventListener('click', () => $('theoryModal').hidden = false);
   $('closeTheory').addEventListener('click', () => $('theoryModal').hidden = true);
   $('theoryModal').addEventListener('click', e => { if (e.target.id === 'theoryModal') $('theoryModal').hidden = true; });

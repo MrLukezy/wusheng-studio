@@ -142,6 +142,34 @@ BASE=https://www.lukezystudio.cn/music/ node test/loop.mjs
 
 `verify_export.mjs` 会固定种子生成、下载 WAV，再用 Goertzel 逐个音符核对基频——目前 12/12 命中。
 
+## 安卓 App（热更）
+
+纯 WebView 外壳，源码在 `/home/ubuntu/wusheng-apk`（同仓库 `wusheng-apk/`）。
+
+- **页面热更**：页面全部来自服务端，平台更新后 App 打开即最新，不用重装
+- **壳版本检查**：启动拉 `apk/version.json` 比对 `versionCode`，有新版才提示下载
+- 放开 Web Audio 手势限制、导出走系统下载、保持屏幕常亮、长按返回键弹菜单
+
+重新打包：
+
+```bash
+cd wusheng-apk
+./build.sh patch      # 自动 +1 patch 位，编译、签名、发布、重算 sha256
+```
+
+## Agent 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/music/api/apk` | APK 版本、大小、sha256、下载直链、安装说明 |
+| GET | `/music/api/apk/version` | 精简格式，App 内检查更新用 |
+| GET | `/music/apk/wusheng-studio.apk` | APK 二进制 |
+| GET | `/music/apk/version.json` | 静态清单，不依赖服务进程 |
+| POST | `/music/api/arrange` | AI 编曲 `{prompt}` → 调式/速度/配器 |
+| GET | `/music/api/health` | 健康检查与今日额度 |
+
+公开只读、无鉴权。网站顶栏「APK / API」里有两页可交互文档。
+
 ## 部署
 
 ```nginx

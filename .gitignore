@@ -11,3 +11,6 @@ Thumbs.db
 
 # 本地密钥
 .env
+
+# APK 二进制（由 wusheng-apk/build.sh 产出，不进版本库）
+public/apk/*.apk

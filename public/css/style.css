@@ -502,3 +502,78 @@ kbd {
   0%, 100% { box-shadow: 0 10px 26px -12px rgba(217, 164, 65, .9), inset 0 1px 0 rgba(255, 255, 255, .6); }
   50% { box-shadow: 0 10px 30px -10px rgba(240, 205, 140, 1), inset 0 1px 0 rgba(255, 255, 255, .6); }
 }
+
+/* ---------- APK / API 分栏 ---------- */
+.apk-box { width: min(760px, 100%); }
+.tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+.tab {
+  padding: 9px 16px; font-size: 13px; color: var(--muted); position: relative; transition: .15s;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--gold-soft); border-bottom-color: var(--gold); }
+.tab-pane[hidden] { display: none; }
+
+.apk-hero {
+  display: flex; align-items: center; gap: 18px; padding: 18px;
+  background: linear-gradient(120deg, rgba(217,164,65,.10), rgba(255,255,255,.015));
+  border: 1px solid var(--line); border-radius: 14px; margin-bottom: 16px;
+}
+.apk-icon {
+  width: 64px; height: 64px; flex: none; display: grid; place-items: center;
+  font-family: var(--serif); font-size: 32px; color: #1b1206;
+  background: linear-gradient(160deg, #f0cd8c, #c8933a);
+  border-radius: 15px; box-shadow: 0 8px 24px -10px rgba(217,164,65,.8);
+}
+.apk-info { flex: 1; min-width: 0; }
+.apk-info h3 { margin: 0 0 3px; font-family: var(--serif); font-size: 17px; letter-spacing: .1em; }
+.apk-info p { margin: 0 0 11px; font-size: 11.5px; color: var(--muted); }
+.apk-btn { display: inline-block; padding: 9px 22px; border-radius: 9px; text-decoration: none; }
+.apk-btn:hover { filter: brightness(1.07); }
+
+.callout.info {
+  padding: 12px 14px; border-radius: 10px; font-size: 12px; line-height: 1.7;
+  background: rgba(89,195,166,.07); border: 1px solid rgba(89,195,166,.22); color: #b9b4a9;
+  margin-bottom: 6px;
+}
+.callout.info > b { color: var(--jade); display: block; margin-bottom: 4px; font-size: 12.5px; }
+.callout.info p b { color: var(--gold-soft); }
+.callout.info p { margin: 0 0 4px; }
+.callout.info p:last-child { margin-bottom: 0; }
+.callout.info code { color: var(--gold-soft); }
+
+.apk-steps { margin: 6px 0 0; padding-left: 20px; }
+.apk-steps li { font-size: 12.5px; color: #b9b4a9; line-height: 1.9; }
+
+.mono-table td:first-child { width: 92px; color: var(--dim); }
+.mono-table td:last-child { text-align: left; }
+.mono-table code { font-size: 11px; color: var(--gold-soft); word-break: break-all; }
+
+.api-intro { font-size: 12.5px; color: #b9b4a9; margin: 0 0 14px; }
+.api-intro code { color: var(--gold-soft); }
+.api-table { font-size: 11.5px; }
+.api-table th { font-size: 11px; }
+.api-table td { text-align: left; padding: 7px 9px; }
+.api-table td:nth-child(2) { white-space: nowrap; }
+.api-table code { font-size: 11px; color: #cfc9bc; }
+.m { font-size: 9.5px; padding: 2px 6px; border-radius: 4px; font-weight: 600; letter-spacing: .04em; }
+.m.get { background: rgba(89,195,166,.15); color: var(--jade); }
+.m.post { background: rgba(217,164,65,.15); color: var(--gold-soft); }
+
+pre.code {
+  margin: 8px 0 14px; padding: 12px 14px; border-radius: 10px; overflow-x: auto;
+  background: #0a0d12; border: 1px solid var(--line); font-size: 11px; line-height: 1.75;
+}
+pre.code code { color: #c8c2b6; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.api-note { font-size: 11.5px; color: var(--dim); margin: -6px 0 14px; }
+.api-note code { color: var(--gold-soft); }
+.api-list { margin: 6px 0 0; padding-left: 18px; }
+.api-list li { font-size: 12px; color: #b9b4a9; line-height: 1.85; }
+.api-list code { font-size: 11px; color: var(--gold-soft); }
+
+@media (max-width: 720px) {
+  .apk-hero { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .apk-box { padding: 20px 16px; }
+  .api-table { font-size: 10.5px; }
+  .api-table td:nth-child(2) { white-space: normal; word-break: break-all; }
+}

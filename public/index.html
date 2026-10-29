@@ -22,6 +22,7 @@
     </div>
     <nav class="bar-nav">
       <span class="engine-badge" id="engineBadge" hidden></span>
+      <button class="ghost" id="btnApk">APK / API</button>
       <button class="ghost" id="btnTheory">乐理与算法</button>
       <button class="ghost" id="btnShare">复制分享链接</button>
     </nav>
@@ -219,6 +220,89 @@
     <div class="gen-bar"><i id="genBar"></i></div>
     <p class="gen-meta" id="genMeta"></p>
     <button class="gen-cancel" id="genCancel">取消</button>
+  </div>
+</div>
+
+<div class="modal" id="apkModal" hidden>
+  <div class="modal-box apk-box">
+    <button class="close" id="closeApk">✕</button>
+    <h2>APK 与 Agent 接口</h2>
+    <div class="tabs" id="apkTabs">
+      <button class="tab on" data-tab="download">下载 App</button>
+      <button class="tab" data-tab="api">Agent 接口</button>
+    </div>
+
+    <div class="tab-pane" data-pane="download">
+      <div class="apk-hero">
+        <div class="apk-icon">五</div>
+        <div class="apk-info">
+          <h3 id="apkName">五声工坊</h3>
+          <p id="apkMeta">正在读取版本信息…</p>
+          <a class="btn-solid apk-btn" id="apkDownload" href="/music/apk/wusheng-studio.apk">下载 APK</a>
+        </div>
+      </div>
+      <div class="callout info">
+        <b>热更说明</b>
+        <p>App 是纯 WebView 外壳，页面内容全部来自服务端。平台更新后，打开 App 就是最新版，<b>不需要重新安装</b>。</p>
+        <p>只有外壳能力变化（下载、音频、菜单等）才需要换 APK。App 启动会拉 <code>version.json</code> 比对 <code>versionCode</code>，有新版才提示。</p>
+      </div>
+      <h3>安装步骤</h3>
+      <ol class="apk-steps">
+        <li>下载 APK 到手机</li>
+        <li>允许「安装未知来源应用」</li>
+        <li>打开安装，首次启动即为最新页面</li>
+      </ol>
+      <h3>校验</h3>
+      <table class="tbl mono-table">
+        <tr><td>包名</td><td><code id="apkPkg">—</code></td></tr>
+        <tr><td>版本</td><td><code id="apkVer">—</code></td></tr>
+        <tr><td>大小</td><td><code id="apkSize">—</code></td></tr>
+        <tr><td>最低系统</td><td><code id="apkMin">—</code></td></tr>
+        <tr><td>SHA-256</td><td><code id="apkSha">—</code></td></tr>
+      </table>
+    </div>
+
+    <div class="tab-pane" data-pane="api" hidden>
+      <p class="api-intro">接口面向 agent 设计：无鉴权、结构化 JSON、字段稳定。base 固定为 <code id="apiBase">https://www.lukezystudio.cn/music</code>。</p>
+
+      <h3>端点</h3>
+      <table class="tbl api-table">
+        <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><span class="m get">GET</span></td><td><code>/api/apk</code></td><td>APK 版本、大小、sha256、下载直链、安装说明</td></tr>
+          <tr><td><span class="m get">GET</span></td><td><code>/api/apk/version</code></td><td>精简版本信息，App 内检查更新用</td></tr>
+          <tr><td><span class="m get">GET</span></td><td><code>/apk/wusheng-studio.apk</code></td><td>APK 二进制，<code>application/vnd.android.package-archive</code></td></tr>
+          <tr><td><span class="m get">GET</span></td><td><code>/apk/version.json</code></td><td>静态清单，不依赖服务进程，适合离线镜像</td></tr>
+          <tr><td><span class="m post">POST</span></td><td><code>/api/arrange</code></td><td>AI 编曲：<code>{"prompt":"…"}</code> → 调式/速度/配器</td></tr>
+          <tr><td><span class="m get">GET</span></td><td><code>/api/health</code></td><td>健康检查与今日剩余额度</td></tr>
+        </tbody>
+      </table>
+
+      <h3>示例：查询并下载 APK</h3>
+      <pre class="code"><code># 1. 拿元信息
+curl -s https://www.lukezystudio.cn/music/api/apk
+
+# 2. 下载并校验
+curl -sO https://www.lukezystudio.cn/music/apk/wusheng-studio.apk
+sha256sum wusheng-studio.apk</code></pre>
+
+      <h3>响应示例（节选）</h3>
+      <pre class="code"><code id="apiSample">加载中…</code></pre>
+
+      <h3>示例：让 agent 直接编曲</h3>
+      <pre class="code"><code>curl -s -X POST https://www.lukezystudio.cn/music/api/arrange \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"雨夜独处，二胡为主，加点雨声"}'</code></pre>
+      <p class="api-note">返回的 <code>data.tracks</code> 可直接作为生成参数；失败时 <code>fallback: true</code>，调用方应退回本地规则。</p>
+
+      <h3>约定</h3>
+      <ul class="api-list">
+        <li><b>限流</b>：<code>/api/arrange</code> 每 IP 每小时 10 次，全局每日 400 次；同 prompt 命中缓存不计数。</li>
+        <li><b>超时</b>：<code>/api/arrange</code> 上游 5–7 秒，客户端建议 25 秒超时。</li>
+        <li><b>错误</b>：统一返回 <code>{"ok":false,"error":"…"}</code>，HTTP 429 表示限流，503 表示 AI 未配置。</li>
+        <li><b>无鉴权</b>：以上均为公开只读接口，不携带任何密钥。</li>
+      </ul>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

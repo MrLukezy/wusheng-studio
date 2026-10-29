@@ -145,6 +145,62 @@ function sanitize(raw) {
   return out;
 }
 
+/* ---------------- APK 元信息（给 agent 用） ---------------- */
+const APK_DIR = path.join(ROOT, 'public', 'apk');
+const SITE = ENV.MUSIC_SITE || 'https://www.lukezystudio.cn/music';
+
+function readApkInfo() {
+  const dir = APK_DIR;
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.apk')) : [];
+  if (!files.length) return null;
+  const apk = files[0];
+  const full = path.join(dir, apk);
+  const buf = fs.readFileSync(full);
+  const sha = crypto.createHash('sha256').update(buf).digest('hex');
+  let manifest = {};
+  const vj = path.join(dir, 'version.json');
+  if (fs.existsSync(vj)) {
+    try { manifest = JSON.parse(fs.readFileSync(vj, 'utf8')); } catch { }
+  }
+  const stat = fs.statSync(full);
+  return {
+    app: '五声工坊',
+    package: 'com.lukezy.wusheng',
+    fileName: apk,
+    versionName: manifest.versionName || '1.0.0',
+    versionCode: manifest.versionCode || 1,
+    minSdk: manifest.minSdk || 23,
+    targetSdk: 34,
+    sizeBytes: buf.length,
+    sha256: sha,
+    lastModified: stat.mtime.toISOString(),
+    downloadUrl: `${SITE}/apk/${apk}`,
+    checkUrl: `${SITE}/apk/version.json`,
+    releaseNotes: manifest.notes || '',
+  };
+}
+
+const APK_DOC = {
+  hotUpdate: {
+    web: true,
+    note: '页面内容全部来自服务端，平台更新后 App 打开即最新，不需要重新安装 APK。',
+    apkUpgrade: '仅当外壳能力变化（下载、音频、菜单等）时才需要换 APK；App 启动会拉 version.json 比对 versionCode。',
+  },
+  install: [
+    '下载 APK 到手机',
+    '允许「安装未知来源应用」',
+    '打开安装，首次启动即为最新页面',
+  ],
+  endpoints: [
+    { method: 'GET', path: '/music/api/apk', desc: '查询 APK 版本、大小、sha256、下载直链（本响应）' },
+    { method: 'GET', path: '/music/api/apk/version', desc: 'App 内检查更新用的精简格式' },
+    { method: 'GET', path: '/music/apk/wusheng-studio.apk', desc: 'APK 二进制下载（application/vnd.android.package-archive）' },
+    { method: 'GET', path: '/music/apk/version.json', desc: '静态版本清单，无需服务进程，适合离线镜像' },
+    { method: 'POST', path: '/music/api/arrange', desc: 'AI 编曲：{prompt} → 调式/速度/配器' },
+    { method: 'GET', path: '/music/api/health', desc: '服务健康检查与今日额度' },
+  ],
+};
+
 /* ---------------- HTTP ---------------- */
 const server = http.createServer(async (req, res) => {
   const send = (code, obj) => {
@@ -153,6 +209,23 @@ const server = http.createServer(async (req, res) => {
     res.end(body);
   };
 
+  if (req.method === 'GET' && (req.url === '/api/apk' || req.url === '/api/apk/')) {
+    const info = readApkInfo();
+    if (!info) return send(404, { ok: false, error: '尚未发布 APK' });
+    return send(200, { ok: true, ...info, ...APK_DOC });
+  }
+  if (req.method === 'GET' && req.url.startsWith('/api/apk/version')) {
+    const info = readApkInfo();
+    if (!info) return send(404, { ok: false, error: '尚未发布 APK' });
+    return send(200, {
+      versionCode: info.versionCode,
+      versionName: info.versionName,
+      url: info.downloadUrl,
+      sizeBytes: info.sizeBytes,
+      sha256: info.sha256,
+      notes: info.releaseNotes,
+    });
+  }
   if (req.method === 'GET' && req.url === '/api/health') {
     return send(200, { ok: true, enabled: ENABLED, model: ENABLED ? LLM_MODEL : null, today: dayCount, cap: DAILY_CAP });
   }
