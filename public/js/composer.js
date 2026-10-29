@@ -69,16 +69,15 @@ export function normalizeTracks(list, mood) {
 function buildSections(bars) {
   const intro = bars >= 14 ? 2 : 1;
   const outro = bars >= 12 ? 2 : 1;
-  let body = Math.max(2, bars - intro - outro);
+  const body = Math.max(2, bars - intro - outro);
+  // 最多 8 个乐句，多余的节数平摊到各句，避免名字重复
+  const count = Math.min(8, Math.max(1, Math.ceil(body / 4)));
+  const names = ['起', '承', '转', '合', '展', '收', '变', '终'];
+  const base = Math.floor(body / count);
+  const extra = body - base * count;
   const secs = [{ name: '引', bars: intro }];
-  const names = ['起', '承', '转', '合', '展', '收'];
-  let i = 0;
-  while (body > 0) {
-    let b = Math.min(4, body);
-    // 避免留下 1 小节的尾巴
-    if (body - b === 1 && b > 2) b -= 1;
-    secs.push({ name: names[Math.min(i, names.length - 1)], bars: b });
-    body -= b; i++;
+  for (let i = 0; i < count; i++) {
+    secs.push({ name: names[i], bars: base + (i < extra ? 1 : 0) });
   }
   secs.push({ name: '尾', bars: outro });
   return secs;
