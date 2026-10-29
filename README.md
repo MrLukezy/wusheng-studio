@@ -30,7 +30,20 @@
 - **五声键盘**：`A S D F G` / `Q W E R T` 演奏，`Z X` 换八度
 - **钢琴卷帘**：五声音级为行、小节为列，段落色带、播放头、悬停查阶名、点击跳转
 - **导出**：44.1kHz·16bit 立体声 WAV（含卷积混响，按当前静音/独奏混音），标准 SMF format 1 MIDI（每轨独立、含 GM 音色）
+- **循环曲式**：一键生成首尾相接的背景乐，导出即无缝循环
 - **作品库**：本地保存、分享链接还原
+
+## 循环曲式
+
+打开「循环曲式」后：
+
+- **曲式**：去掉引子与尾声，只剩 起-承-转-合 这类闭环段落；
+- **收尾**：末小节的低音落到「回旋音」——纯五度存在时落属音（宫/商/徵/羽调式），否则回主音（角调式）；旋律提前 1.5 拍收尾，留一口气给开头；
+- **音频**：渲染时多算 4 秒尾巴，再把尾巴**折回开头**（相当于环形卷积），所以循环点没有断口；
+- **播放**：`AudioBufferSourceNode.loop = true`，sample 级无缝，不是「播完再重播」；
+- **导出**：WAV 长度精确等于循环长度（如 16 小节 96BPM = 1,764,000 帧），拖进 DAW 直接 loop。
+
+实测接缝跳变 0.0005，比正常相邻样本差（0.0078）还小一个数量级。
 
 ## 声音是怎么来的
 
@@ -68,6 +81,7 @@ test/
   analyze.mjs         音高、五声约束、复现性、编码自检
   e2e.mjs             Playwright 端到端：AI 生成 / 参数重排 / 加轨 / 导出
   verify_export.mjs   导出音频 ↔ 乐谱逐音符核对
+  loop.mjs            循环曲式：长度精确性 + 接缝无跳变
 ```
 
 ## 本地运行
@@ -95,6 +109,7 @@ node test/analyze.mjs      # 合成与乐理自检（无需浏览器）
 npm i -D playwright-core   # 下面两个需要浏览器
 node test/e2e.mjs
 BASE=https://www.lukezystudio.cn/music/ node test/verify_export.mjs
+BASE=https://www.lukezystudio.cn/music/ node test/loop.mjs
 ```
 
 `verify_export.mjs` 会固定种子生成、下载 WAV，再用 Goertzel 逐个音符核对基频——目前 12/12 命中。

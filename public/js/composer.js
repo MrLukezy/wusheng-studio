@@ -1,7 +1,7 @@
 // AI 编曲：角色化音轨（主旋律/副旋律/铺底/低音/打击/氛围）
 // 动机生成 → 模进/变奏 → 配器 → 人声化微扰。规则驱动，同一 seed 可复现。
 import { Rng } from './rng.js';
-import { MODES, KEYS, MOOD_BY_ID, makeTitle, stepToMidi, stepDegree } from './theory.js';
+import { MODES, KEYS, MOOD_BY_ID, makeTitle, stepToMidi, stepDegree, DEGREE_SEMIS } from './theory.js';
 import { INSTRUMENTS } from './synth.js';
 
 export const ROLES = {
@@ -24,6 +24,14 @@ const isAmb = inst => INSTRUMENTS[inst]?.family === 'amb';
 const isPerc = inst => INSTRUMENTS[inst]?.family === 'perc';
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+
+// 循环曲式的「回旋音」：纯五度就落在属音上，否则回主音（角调式等）
+function turnaroundDegree(mode) {
+  const d = (mode.tonic + 3) % 5;
+  let semis = DEGREE_SEMIS[d] - DEGREE_SEMIS[mode.tonic];
+  if (semis <= 0) semis += 12;
+  return semis === 7 ? d : mode.tonic;
+}
 
 /* ---------------- 音轨规格 ---------------- */
 
@@ -66,7 +74,17 @@ export function normalizeTracks(list, mood) {
 
 /* ---------------- 曲式 ---------------- */
 
-function buildSections(bars) {
+function buildSections(bars, loop) {
+  if (loop) {
+    // 循环曲式：不留引子/尾声，整段首尾相接
+    const count = Math.min(8, Math.max(2, Math.round(bars / 4)));
+    const names = ['起', '承', '转', '合', '展', '收', '变', '终'];
+    const base = Math.floor(bars / count);
+    const extra = bars - base * count;
+    const out = [];
+    for (let i = 0; i < count; i++) out.push({ name: names[i], bars: base + (i < extra ? 1 : 0) });
+    return out;
+  }
   const intro = bars >= 14 ? 2 : 1;
   const outro = bars >= 12 ? 2 : 1;
   const body = Math.max(2, bars - intro - outro);
@@ -149,7 +167,12 @@ function genPhrase(rng, opts) {
     ? tonicSteps.filter(x => x >= lo + 2)
     : fifthSteps.filter(x => x >= lo + 2);
   const cad = rng.pick(cand.length ? cand : tonicSteps) || tonicSteps[0] || s;
-  ev.push({ step: cad, t: lastBar * 4 + 2, dur: 2, vel: 0.8, grace: false, cadence: true });
+  const cadT = lastBar * 4 + 2;
+  // 落音前清掉同一拍上的普通音符，避免叠音
+  for (let i = ev.length - 1; i >= 0; i--) {
+    if (Math.abs(ev[i].t - cadT) < 0.6) ev.splice(i, 1);
+  }
+  ev.push({ step: cad, t: cadT, dur: 2, vel: 0.8, grace: false, cadence: true });
   return ev;
 }
 
@@ -164,6 +187,7 @@ export function compose(opts = {}) {
   const bpm = clamp(Math.round(opts.bpm || mood.bpm), 40, 200);
   const density = clamp(opts.density ?? mood.density, 0.08, 1);
   const bars = clamp(Math.round(opts.bars || 20), 8, 48);
+  const loop = !!opts.loop;
   const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9);
   const spec = normalizeTracks(opts.tracks && opts.tracks.length ? opts.tracks : defaultTracks(mood), mood);
   // 注意：bpm 不进种子，改速度只改快慢，不重掷旋律
@@ -172,7 +196,7 @@ export function compose(opts = {}) {
   const rootMidi = key.midi;
   const secPerBeat = 60 / bpm;
 
-  const sections = buildSections(bars);
+  const sections = buildSections(bars, loop);
   const barSec = [];
   let cursor = 0;
   for (const sec of sections) {
@@ -291,6 +315,21 @@ export function compose(opts = {}) {
     }
     for (const n of phrase) push(leadTrack, { ...n, vel: n.vel * energy });
 
+    // 循环模式的最后一句：落音改到属音，留一口气给开头
+    if (loop && sec === sections[sections.length - 1]) {
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const n = notes[i];
+        if (n.track !== leadTrack.id) continue;
+        if (!n.cadence) continue;
+        const fifth = stepsWithDegree(turnaroundDegree(mode), leadReg[0] + 1, leadReg[1] - 1);
+        n.step = fifth[0] ?? n.step;
+        n.midi = stepToMidi(n.step, rootMidi);
+        n.dur = Math.min(n.dur, 1.5);
+        n.t = Math.min(n.t, totalBeats - 1.5);
+        break;
+      }
+    }
+
     // 副旋律：与主旋律错开、落在下方三度内
     harmTracks.forEach((ht, idx) => {
       const reg = REGISTER[ht.inst] || [2, 10];
@@ -322,7 +361,8 @@ export function compose(opts = {}) {
     for (let b = 0; b < totalBars; b++) {
       const sec = barSec[b];
       if (sec === '引' || sec === '尾') continue;
-      const chordDeg = prog[b % prog.length];
+      let chordDeg = prog[b % prog.length];
+      if (loop && b === totalBars - 1) chordDeg = turnaroundDegree(mode); // 末小节落回旋音
       const step = chordDeg - 5;
       push(bassTrack, { t: beatOf(b), dur: 3.6, step, vel: 0.6 + (b % 2 === 0 ? 0.06 : 0) });
       if (density > 0.55 && b % 2 === 1) {
@@ -376,7 +416,7 @@ export function compose(opts = {}) {
     meta: {
       title, mood: moodId, moodName: mood.name, mode: modeIdx, modeName: mode.name,
       key: key.name, rootMidi, bpm, seed, density, bars: totalBars, beats: totalBeats,
-      duration: totalBeats * secPerBeat,
+      duration: totalBeats * secPerBeat, loop,
       desc, engine: opts.engine || 'rule', reason: opts.reason || '',
       palette: usedTracks.map(t => t.inst),
     },

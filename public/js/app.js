@@ -16,7 +16,7 @@ const API = 'api/arrange';
 
 const DEFAULTS = {
   inspire: '', mood: 'qingya', mode: 0, key: 'C', bpm: 68, density: 55,
-  bars: 20, seed: '', ai: true, tracks: null, title: '', reason: '',
+  bars: 20, seed: '', ai: true, loop: false, tracks: null, title: '', reason: '',
 };
 
 let settings = loadSettings();
@@ -105,6 +105,7 @@ function syncUI() {
   $('durHint').textContent = `≈ ${fmt(settings.bars * 240 / settings.bpm)}`;
   $('seed').value = settings.seed;
   $('aiToggle').checked = !!settings.ai;
+  $('loopToggle').checked = !!settings.loop;
   document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.mood === settings.mood));
 }
 
@@ -234,11 +235,12 @@ async function buildPiece({ seed, engine, title, reason, onProgress }) {
   const p = compose({
     mood: settings.mood, mode: settings.mode, key: settings.key,
     bpm: settings.bpm, density: settings.density / 100, bars: settings.bars,
-    seed, tracks: settings.tracks, engine, title, reason,
+    loop: settings.loop, seed, tracks: settings.tracks, engine, title, reason,
   });
   await player.build(p, onProgress);
   piece = p;
   settings.tracks = p.spec;
+  player.loop = !!p.meta.loop;
   player.stop();
   player.mute.clear(); player.solo = null;
   volume = {};
@@ -265,6 +267,9 @@ function renderAll() {
   $('desc').textContent = m.desc;
   const reason = $('reason');
   if (m.reason) { reason.hidden = false; reason.textContent = m.reason; } else reason.hidden = true;
+
+  $('loopTag').hidden = !m.loop;
+  $('btnLoop').classList.toggle('on', player.loop);
 
   const badge = $('engineBadge');
   badge.hidden = false;
@@ -594,7 +599,7 @@ async function exportWav() {
   try {
     const buf = await player.renderOffline(piece, { mute: player.mute, solo: player.solo, gains: player.gains });
     const ab = audioBufferToWav(buf);
-    const name = `${sanitizeName(piece.meta.title)}_${piece.meta.key}${piece.meta.modeName}_${piece.meta.bpm}bpm.wav`;
+    const name = `${sanitizeName(piece.meta.title)}_${piece.meta.key}${piece.meta.modeName}_${piece.meta.bpm}bpm${piece.meta.loop ? '_loop' : ''}.wav`;
     downloadBlob(new Blob([ab], { type: 'audio/wav' }), name);
     toast(`已导出 ${name} · ${(ab.byteLength / 1048576).toFixed(1)} MB`, 3600);
   } catch (e) {
@@ -663,7 +668,7 @@ function updateHash() {
   const params = new URLSearchParams({
     seed: String(piece.meta.seed), mood: piece.meta.mood, mode: piece.meta.mode,
     key: piece.meta.key, bpm: piece.meta.bpm, density: Math.round(piece.meta.density * 100),
-    bars: piece.meta.bars, tracks,
+    bars: piece.meta.bars, tracks, loop: piece.meta.loop ? 1 : 0,
   });
   history.replaceState(null, '', '#' + params.toString());
 }
@@ -672,7 +677,7 @@ function shareLink() {
   return location.href.split('#')[0] + '#' + new URLSearchParams({
     seed: seedNum || settings.seed || '', mood: settings.mood, mode: settings.mode,
     key: settings.key, bpm: settings.bpm, density: settings.density,
-    bars: settings.bars, tracks,
+    bars: settings.bars, tracks, loop: settings.loop ? 1 : 0,
   }).toString();
 }
 function applyHash() {
@@ -687,6 +692,7 @@ function applyHash() {
   settings.density = Number(p.get('density') ?? settings.density);
   settings.bars = Number(p.get('bars') ?? settings.bars);
   settings.seed = p.get('seed') || '';
+  settings.loop = p.get('loop') === '1';
   const tracks = p.get('tracks');
   if (tracks) {
     settings.tracks = tracks.split(',').map(x => {
@@ -719,6 +725,10 @@ async function audition(id) {
 function bind() {
   $('inspire').addEventListener('input', e => { settings.inspire = e.target.value; saveSettings(); });
   $('aiToggle').addEventListener('change', e => { settings.ai = e.target.checked; saveSettings(); });
+  $('loopToggle').addEventListener('change', e => {
+    settings.loop = e.target.checked; saveSettings();
+    if (piece) recompose(); else generate();
+  });
 
   $('moodChips').addEventListener('click', e => {
     const b = e.target.closest('.chip'); if (!b) return;
@@ -749,6 +759,7 @@ function bind() {
   $('btnLoop').addEventListener('click', () => {
     player.loop = !player.loop;
     $('btnLoop').classList.toggle('on', player.loop);
+    if (player.playing) player.play(player.position); // 立即按新的循环状态重排
   });
   $('btnWav').addEventListener('click', exportWav);
   $('btnMidi').addEventListener('click', exportMidi);

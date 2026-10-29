@@ -77,8 +77,12 @@ export class Player {
     const secPerBeat = 60 / piece.meta.bpm;
     let endBeat = 0;
     for (const n of piece.notes) endBeat = Math.max(endBeat, n.t + n.dur);
-    this.duration = endBeat * secPerBeat + TAIL_BEATS * secPerBeat + 1.6;
-    const total = Math.ceil(this.duration * SR);
+    const loop = !!piece.meta.loop;
+    const loopLen = loop ? Math.round(piece.meta.beats * secPerBeat * SR) : 0;
+    this.loopLen = loopLen;
+    this.duration = loop ? loopLen / SR : endBeat * secPerBeat + TAIL_BEATS * secPerBeat + 1.6;
+    // 循环曲式多渲染 4 秒尾巴，稍后折回开头
+    const total = loop ? loopLen + 4 * SR : Math.ceil(this.duration * SR);
     const ctx = this.ctx;
 
     this.trackBuffers.clear();
@@ -111,10 +115,16 @@ export class Player {
       if (onProgress && done % 24 === 0) { onProgress(done / piece.notes.length); await new Promise(r => setTimeout(r, 0)); }
     }
 
+    if (loop) {
+      for (const a of arrays.values()) {
+        for (let i = loopLen; i < a.length; i++) a[i - loopLen] += a[i];
+      }
+    }
+    const outLen = loop ? loopLen : total;
     for (const id of trackIds) {
       const a = arrays.get(id);
-      const ab = ctx.createBuffer(1, total, SR);
-      ab.copyToChannel(a, 0);
+      const ab = ctx.createBuffer(1, outLen, SR);
+      ab.copyToChannel(a.subarray(0, outLen), 0);
       this.trackBuffers.set(id, ab);
     }
     this.piece = piece;
@@ -155,14 +165,17 @@ export class Player {
       pan.pan.value = this.piece.trackDefs?.[id]?.pan ?? 0;
       const send = ctx.createGain(); send.gain.value = 0.5;
       src.connect(gain); gain.connect(pan); pan.connect(this.master); pan.connect(send); send.connect(this.conv);
+      if (this.loop) { src.loop = true; src.loopStart = 0; src.loopEnd = buf.duration; }
       src.start(when, Math.min(this.startOffset, buf.duration - 0.01));
       this.sources.push(src);
       this.nodes.set(id, { gain, pan, send });
     }
     this.playing = true;
-    const remaining = (this.duration - this.startOffset) * 1000;
     clearTimeout(this._endTimer);
-    this._endTimer = setTimeout(() => this._handleEnd(), Math.max(50, remaining + 120));
+    if (!this.loop) {
+      const remaining = (this.duration - this.startOffset) * 1000;
+      this._endTimer = setTimeout(() => this._handleEnd(), Math.max(50, remaining + 120));
+    }
   }
 
   _handleEnd() {
@@ -195,7 +208,9 @@ export class Player {
   get position() {
     if (!this.ctx) return this.startOffset;
     if (!this.playing) return this.startOffset;
-    return Math.min(this.duration, this.startOffset + (this.ctx.currentTime - this.startCtxTime));
+    const t = this.startOffset + (this.ctx.currentTime - this.startCtxTime);
+    if (this.loop && this.duration > 0) return t % this.duration;
+    return Math.min(this.duration, t);
   }
 
   setTrackGain(id, v) {
@@ -234,7 +249,9 @@ export class Player {
     const secPerBeat = 60 / piece.meta.bpm;
     let endBeat = 0;
     for (const n of piece.notes) endBeat = Math.max(endBeat, n.t + n.dur);
-    const duration = endBeat * secPerBeat + TAIL_BEATS * secPerBeat + 2.2;
+    const loop = !!piece.meta.loop;
+    const loopLen = loop ? Math.round(piece.meta.beats * secPerBeat * SR) : 0;
+    const duration = loop ? loopLen / SR + 4 : endBeat * secPerBeat + TAIL_BEATS * secPerBeat + 2.2;
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const ctx = new OAC(2, Math.ceil(duration * SR), SR);
 
@@ -280,7 +297,17 @@ export class Player {
       src.connect(gain); gain.connect(pan); pan.connect(master); pan.connect(send); send.connect(conv);
       src.start(0);
     }
-    const rendered = await ctx.startRendering();
+    let rendered = await ctx.startRendering();
+    // 循环曲式：把尾巴（含混响）折回开头，导出的文件本身就是无缝循环
+    if (loop) {
+      const folded = ctx.createBuffer(2, loopLen, SR);
+      for (let c = 0; c < 2; c++) {
+        const src = rendered.getChannelData(Math.min(c, rendered.numberOfChannels - 1));
+        const dst = folded.getChannelData(c);
+        for (let i = 0; i < loopLen; i++) dst[i] = src[i] + (i + loopLen < src.length ? src[i + loopLen] : 0);
+      }
+      rendered = folded;
+    }
     // 归一化到 -1 dBFS 附近
     let peak = 0;
     for (let c = 0; c < rendered.numberOfChannels; c++) {

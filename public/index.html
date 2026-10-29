@@ -57,6 +57,10 @@
         <label class="field range"><span>速度 <b id="bpmVal">68</b> BPM</span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
         <label class="field range"><span>密度 <b id="densityVal">55%</b></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
         <label class="field range"><span>长度 <b id="barsVal">20</b> 小节 <em id="durHint">≈ 1:10</em></span><input type="range" id="bars" min="8" max="48" step="1" value="20"></label>
+        <label class="ai-row compact">
+          <span class="ai-text"><b>循环曲式</b><em>去掉引子与尾声，结尾落回旋音</em></span>
+          <input type="checkbox" id="loopToggle" class="switch">
+        </label>
         <div class="field-row seed">
           <label class="field"><span>种子</span><input id="seed" inputmode="numeric" placeholder="随机"></label>
           <button class="dice" id="dice" title="换一个种子">🎲</button>
@@ -85,7 +89,7 @@
     <section class="stage">
       <div class="now">
         <div class="now-main">
-          <h2 id="title">还没有曲子</h2>
+          <div class="title-row"><h2 id="title">还没有曲子</h2><span class="loop-tag" id="loopTag" hidden>LOOP</span></div>
           <p id="desc">写一句灵感，或直接点「生成编曲」。</p>
           <p class="reason" id="reason" hidden></p>
         </div>
@@ -174,6 +178,8 @@
         </table>
         <h3>五种调式</h3>
         <p>同一组五声，换主音即成不同调式：<b>宫</b>堂正、<b>商</b>清冽、<b>角</b>摇曳、<b>徵</b>热烈、<b>羽</b>幽远。</p>
+        <h3>循环曲式</h3>
+        <p>打开后去掉引子与尾声，整首首尾相接：末小节的低音落到<b>回旋音</b>（纯五度就落属音，否则回主音），旋律提前收尾留一口气。渲染时多算 4 秒尾巴再<b>折回开头</b>，所以循环点没有断口，导出的 WAV 本身就是无缝循环。</p>
         <h3>音色</h3>
         <p>17 种音色全部逐采样合成：古筝/琵琶/古琴用弦模型，二胡用锯齿波族加弓噪，笛/箫/埙用加法合成，编钟/扬琴/锣用非谐分音，雨声/风声是连续纹理层。</p>
       </div>
