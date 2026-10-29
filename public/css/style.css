@@ -461,7 +461,7 @@ kbd {
 .ring-fg {
   stroke: url(#none); stroke: #d9a441;
   stroke-dasharray: 326.7; stroke-dashoffset: 326.7;
-  transition: stroke-dashoffset .28s ease-out, stroke .3s;
+  transition: stroke .3s;
   filter: drop-shadow(0 0 6px rgba(217, 164, 65, .55));
 }
 .gen-pct {
@@ -469,7 +469,7 @@ kbd {
   gap: 1px; font-family: var(--serif); font-size: 26px; color: var(--gold-soft);
   font-variant-numeric: tabular-nums; letter-spacing: .02em; line-height: 1;
 }
-.gen-pct i { font-size: 12px; font-style: normal; color: var(--dim); margin-bottom: 6px; }
+.gen-pct i { font-size: 12px; font-style: normal; color: var(--dim); margin-bottom: 5px; }
 .gen-dialog h3 {
   margin: 0 0 4px; font-family: var(--serif); font-size: 16px;
   letter-spacing: .16em; font-weight: 600; color: var(--ink);
@@ -479,7 +479,7 @@ kbd {
 .gen-bar i {
   display: block; height: 100%; width: 0;
   background: linear-gradient(90deg, #d9a441, #8fd6bd);
-  border-radius: 3px; transition: width .28s ease-out;
+  border-radius: 3px;
 }
 .gen-meta {
   margin: 9px 0 0; font-size: 10.5px; color: var(--dim);
