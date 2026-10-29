@@ -270,6 +270,7 @@ function renderAll() {
 
   $('loopTag').hidden = !m.loop;
   $('btnLoop').classList.toggle('on', player.loop);
+  $('btnLoop').textContent = player.loop ? '循环开' : '循环';
 
   const badge = $('engineBadge');
   badge.hidden = false;
@@ -758,6 +759,7 @@ function bind() {
   $('btnStop').addEventListener('click', stopAll);
   $('btnLoop').addEventListener('click', () => {
     player.loop = !player.loop;
+    $('btnLoop').textContent = player.loop ? '循环开' : '循环';
     $('btnLoop').classList.toggle('on', player.loop);
     if (player.playing) player.play(player.position); // 立即按新的循环状态重排
   });

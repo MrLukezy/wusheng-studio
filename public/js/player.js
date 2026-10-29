@@ -80,6 +80,7 @@ export class Player {
     const loop = !!piece.meta.loop;
     const loopLen = loop ? Math.round(piece.meta.beats * secPerBeat * SR) : 0;
     this.loopLen = loopLen;
+    this.musicalLen = loop ? loopLen / SR : endBeat * secPerBeat;
     this.duration = loop ? loopLen / SR : endBeat * secPerBeat + TAIL_BEATS * secPerBeat + 1.6;
     // 循环曲式多渲染 4 秒尾巴，稍后折回开头
     const total = loop ? loopLen + 4 * SR : Math.ceil(this.duration * SR);
@@ -165,7 +166,11 @@ export class Player {
       pan.pan.value = this.piece.trackDefs?.[id]?.pan ?? 0;
       const send = ctx.createGain(); send.gain.value = 0.5;
       src.connect(gain); gain.connect(pan); pan.connect(this.master); pan.connect(send); send.connect(this.conv);
-      if (this.loop) { src.loop = true; src.loopStart = 0; src.loopEnd = buf.duration; }
+      if (this.loop) {
+        src.loop = true;
+        src.loopStart = 0;
+        src.loopEnd = Math.min(buf.duration, this.musicalLen + 0.02);
+      }
       src.start(when, Math.min(this.startOffset, buf.duration - 0.01));
       this.sources.push(src);
       this.nodes.set(id, { gain, pan, send });
