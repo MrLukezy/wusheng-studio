@@ -167,7 +167,8 @@ export function compose(opts = {}) {
   const bars = clamp(Math.round(opts.bars || 20), 8, 48);
   const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9);
   const spec = normalizeTracks(opts.tracks && opts.tracks.length ? opts.tracks : defaultTracks(mood), mood);
-  const rng = new Rng(`${seed}|${moodId}|${modeIdx}|${key.name}|${bpm}|${density}|${bars}|${spec.map(t => t.role + t.inst).join(',')}`);
+  // 注意：bpm 不进种子，改速度只改快慢，不重掷旋律
+  const rng = new Rng(`${seed}|${moodId}|${modeIdx}|${key.name}|${density}|${bars}|${spec.map(t => t.role + t.inst).join(',')}`);
   const title = opts.title || makeTitle(moodId, new Rng(`${seed}|title`));
   const rootMidi = key.midi;
   const secPerBeat = 60 / bpm;
