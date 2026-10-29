@@ -1,0 +1,26 @@
+{
+  "name": "wusheng-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "五声工坊：宫商角徵羽五声音阶 AI 编曲台，纯前端合成 + 算法编曲 + WAV/MIDI 导出",
+  "homepage": "https://www.lukezystudio.cn/music/",
+  "scripts": {
+    "serve": "python3 -m http.server 8300 --directory public",
+    "test": "node test/analyze.mjs",
+    "test:e2e": "node test/e2e.mjs",
+    "test:audio": "node test/verify_export.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.0"
+  },
+  "keywords": [
+    "pentatonic",
+    "web-audio",
+    "synthesis",
+    "generative-music",
+    "midi",
+    "wav",
+    "chinese-music"
+  ]
+}

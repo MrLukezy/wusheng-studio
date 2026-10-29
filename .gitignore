@@ -1,0 +1,10 @@
+# 测试产物（导出的 WAV/MIDI、截图）
+test/out/
+
+# 依赖
+node_modules/
+
+# 系统杂项
+.DS_Store
+Thumbs.db
+*.log

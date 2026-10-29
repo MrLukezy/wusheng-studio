@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>五声工坊 · 宫商角徵羽 AI 编曲</title>
+<meta name="description" content="用宫商角徵羽五声音阶做音乐：纯前端合成古筝、笛、埙、编钟，AI 规则编曲，一键导出 WAV / MIDI。">
+<meta name="theme-color" content="#0a0c10">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230a0c10'/><text x='32' y='45' font-size='38' text-anchor='middle' fill='%23d9a441' font-family='serif'>五</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="grain"></div>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <span class="seal">五</span>
+      <div class="brand-text">
+        <h1>五声工坊</h1>
+        <span class="brand-sub">宫 · 商 · 角 · 徵 · 羽　AI 编曲台</span>
+      </div>
+    </div>
+    <nav class="bar-nav">
+      <button class="ghost" id="btnTheory">乐理与算法</button>
+      <button class="ghost" id="btnShare">复制分享链接</button>
+    </nav>
+  </header>
+
+  <main class="grid">
+    <aside class="side">
+      <section class="card">
+        <div class="card-head"><h2>灵感</h2><span class="dot"></span></div>
+        <p class="tip">写一句画面，算法会解析情绪、定调与配器。</p>
+        <textarea id="inspire" rows="3" placeholder="例：月下松风，一个人走夜路"></textarea>
+        <div class="chips" id="moodChips"></div>
+        <div class="field-row">
+          <label class="field"><span>调式</span><select id="mode"></select></label>
+          <label class="field"><span>主音</span><select id="key"></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field range"><span>速度 <b id="bpmVal">68</b></span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
+          <label class="field range"><span>密度 <b id="densityVal">55%</b></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
+        </div>
+        <label class="field"><span>篇幅</span><select id="length"></select></label>
+        <div class="field-row seed">
+          <label class="field"><span>种子</span><input id="seed" inputmode="numeric" placeholder="随机"></label>
+          <button class="dice" id="dice" title="换一个种子">🎲</button>
+        </div>
+        <button class="primary big" id="btnGenerate"><span>生成编曲</span><kbd>G</kbd></button>
+        <div class="gen-progress" id="genProgress"><i></i></div>
+      </section>
+
+
+      <section class="card">
+        <div class="card-head"><h2>作品库</h2><span class="muted" id="libCount">0</span></div>
+        <ul id="lib" class="lib"></ul>
+        <p class="tip small">作品存在浏览器本地，不上传服务器。</p>
+      </section>
+
+      <section class="card help-card">
+        <div class="card-head"><h2>快捷键</h2></div>
+        <ul class="help">
+          <li><kbd>空格</kbd><span>播放 / 暂停</span></li>
+          <li><kbd>G</kbd><span>重新生成</span></li>
+          <li><kbd>Z</kbd><kbd>X</kbd><span>升降八度</span></li>
+          <li><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><span>宫商角徵羽</span></li>
+          <li><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><kbd>T</kbd><span>高八度</span></li>
+          <li><span class="plain">点击卷帘任意位置跳转播放头</span></li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="stage">
+      <div class="now">
+        <div class="now-main">
+          <h2 id="title">还没有曲子</h2>
+          <p id="desc">选一个情绪，或直接点「生成编曲」。</p>
+        </div>
+        <div class="now-meta">
+          <div><b id="mTempo">—</b><span>BPM</span></div>
+          <div><b id="mDur">0:00</b><span>时长</span></div>
+          <div><b id="mBars">0</b><span>小节</span></div>
+          <div><b id="mNotes">0</b><span>音符</span></div>
+        </div>
+      </div>
+
+      <div class="transport">
+        <div class="tgroup">
+          <button class="icon" id="btnPlay" title="播放 / 暂停（空格）">▶</button>
+          <button class="icon" id="btnStop" title="停止">■</button>
+          <button class="pill" id="btnLoop" title="循环">循环</button>
+        </div>
+        <div class="time"><span id="tNow">0:00</span><em>/</em><span id="tTotal">0:00</span></div>
+        <div class="tgroup right">
+          <button class="pill" id="btnSave">保存作品</button>
+          <button class="pill" id="btnMidi">导出 MIDI</button>
+          <button class="pill accent" id="btnWav">导出 WAV</button>
+        </div>
+      </div>
+
+      <div class="roll-wrap">
+        <canvas id="roll"></canvas>
+        <div class="roll-empty" id="rollEmpty">
+          <div class="ink">五</div>
+          <p>点「生成编曲」，让宫商角徵羽先响起来</p>
+        </div>
+        <div class="tooltip" id="rollTip"></div>
+      </div>
+
+      <div class="tracks" id="tracks"></div>
+
+      <div class="keys-wrap">
+        <div class="keys-head">
+          <span>五声键盘</span>
+          <div class="oct">
+            <button id="octDown">−</button>
+            <span id="octLabel">中音区</span>
+            <button id="octUp">+</button>
+          </div>
+          <span class="hint">A S D F G / Q W E R T 演奏</span>
+        </div>
+        <div class="keys" id="keys"></div>
+      </div>
+      <section class="card timbre-card">
+        <div class="card-head"><h2>音色库</h2><span class="muted">点击试听 · 五声上行</span></div>
+        <div id="timbreList" class="timbre-strip"></div>
+      </section>
+
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>纯前端合成 · 无音频素材 · 导出 16-bit / 44.1kHz WAV 与标准 MIDI</span>
+    <span>宫商角徵羽 = 简谱 1 2 3 5 6，无半音，故「移宫换羽」自成一体</span>
+  </footer>
+</div>
+
+<div class="modal" id="theoryModal" hidden>
+  <div class="modal-box">
+    <button class="close" id="closeTheory">✕</button>
+    <h2>五声 · 算法 · 导出</h2>
+    <div class="theory-grid">
+      <div>
+        <h3>五声音阶</h3>
+        <p>宫商角徵羽对应简谱 <b>1 2 3 5 6</b>，音程为「大二 · 大二 · 小三 · 大二」循环，没有半音与导音，所以听起来温润、留白多。</p>
+        <table class="tbl">
+          <tr><th>阶名</th><th>宫</th><th>商</th><th>角</th><th>徵</th><th>羽</th></tr>
+          <tr><td>简谱</td><td>1</td><td>2</td><td>3</td><td>5</td><td>6</td></tr>
+          <tr><td>半音</td><td>0</td><td>2</td><td>4</td><td>7</td><td>9</td></tr>
+          <tr><td>工尺</td><td>上</td><td>尺</td><td>工</td><td>六</td><td>五</td></tr>
+        </table>
+        <h3>五种调式</h3>
+        <p>同一组五声，换主音即成不同调式：<b>宫</b>堂正、<b>商</b>清冽、<b>角</b>摇曳、<b>徵</b>热烈、<b>羽</b>幽远。平台里的「调式」改的是落音重心，不是音阶本身。</p>
+      </div>
+      <div>
+        <h3>编曲算法</h3>
+        <p>不是神经网络，而是可复现的规则生成器：</p>
+        <ol>
+          <li><b>解析</b>：灵感文字里的关键词映射到情绪、主音、调式。</li>
+          <li><b>动机</b>：在五声格内做受约束的随机游走，叠加拱形/上行/波浪音高轮廓。</li>
+          <li><b>发展</b>：起承转合，二句模进、三句对比、四句合尾；句尾按调式落主音或徵音。</li>
+          <li><b>配器</b>：主奏 + 应答 + 低音进行 + 打击，按密度与情绪取舍。</li>
+          <li><b>人声化</b>：时值、力度加高斯微扰，长音加颤音，避免机械感。</li>
+        </ol>
+        <p>同一 seed 永远得到同一首曲子；换 seed 即换一首。</p>
+        <h3>合成与导出</h3>
+        <p>古筝用 Karplus-Strong 弦模型，笛用加法合成加气声，编钟用非谐分音，全部逐采样计算。试听与导出走同一套渲染，所以下载的 WAV 和你在页面上听到的是同一份声音。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
