@@ -79,7 +79,34 @@ const SYSTEM = `你是中国五声音阶（宫商角徵羽）的编曲顾问。�
 - 乐句衔接常用鱼咬尾（下句首音接上句尾音）与换头合尾（各句开头不同、结尾同落）。
 - 描述里的「安静/空旷」要降低密度、拉长混响；「热烈/催人」要提高密度、加打击、减混响。
 
-## 输出字段
+## 输出字段（两种形态二选一）
+
+### A. 多段组曲（当描述里出现「先…后…」「开头…中间…结尾…」或多个情绪的转折时用这个）
+{
+  "title": "2-5 个汉字的曲名",
+  "key": "C|D|E|F|G|A|B",
+  "segments": [
+    {
+      "mood": "huankuai",
+      "bars": 8,                       // 2-16
+      "bpm": 108,                      // 可选，默认取曲风自带
+      "transitionIn": "cut|bridge|attacca",  // 与上一段怎么接；第一段写 cut
+      "label": "欢快"                   // 2-4 字，显示在卷帘上
+    },
+    { "mood": "qingya", "bars": 8, "bpm": 68, "transitionIn": "bridge", "label": "舒缓" },
+    { "mood": "cangliang", "bars": 8, "bpm": 58, "transitionIn": "bridge", "label": "沉重" }
+  ],
+  "atmosphere": {"space": "hall", "dynamics": "natural"},
+  "reason": "不超过 40 字"
+}
+
+多段规则：
+- 2-6 段。段与段之间要有**明确对比**：速度差至少 15 BPM，或配器音色族不同，或织体不同。
+- 情绪走向建议：欢快→舒缓→沉重 / 静谧→明亮→开阔 / 肃穆→激烈→苍凉。
+- 段落名用中文，简洁（欢快、舒缓、沉重、明亮、辽阔、肃穆、乡愁…）。
+- 转沉重时降速、加低音乐器（低音/大阮/编钟/锣）；转欢快时提速、加弹拨与打击。
+
+### B. 单段（描述只指向一种情绪时用这个）
 {
   "title": "2-5 个汉字的曲名",
   "mood": "qingya|huankuai|cangliang|chanyi|jianghu|xiandai|gongting|tianyuan|beige",
@@ -160,9 +187,71 @@ function extractJSON(text) {
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
+const TRANSITIONS = ['cut', 'bridge', 'attacca'];
+
+function sanitizeSegment(seg, i) {
+  if (!seg || typeof seg !== 'object') return null;
+  const mood = MOODS.includes(seg.mood) ? seg.mood : null;
+  if (!mood) return null;
+  const out = {
+    mood,
+    bars: clamp(Math.round(+seg.bars || 8), 2, 16),
+    bpm: clamp(Math.round(+seg.bpm || 0) || 0, 0, 200) || undefined,
+    transitionIn: i === 0 ? 'cut' : (TRANSITIONS.includes(seg.transitionIn) ? seg.transitionIn : 'bridge'),
+    label: String(seg.label || '').replace(/[《》\s]/g, '').slice(0, 6) || undefined,
+  };
+  if (seg.mode != null && Number.isFinite(+seg.mode)) out.mode = clamp(Math.round(+seg.mode), 0, 4);
+  if (seg.density != null) out.density = clamp(+seg.density, 0.1, 1);
+  if (TEXTURES.includes(seg.texture)) out.texture = seg.texture;
+  if (HARMONIES.includes(seg.harmony)) out.harmony = seg.harmony;
+  if (ORNAMENTS.includes(seg.ornament)) out.ornament = seg.ornament;
+  if (DYNAMICS.includes(seg.dynamics)) out.dynamics = seg.dynamics;
+  // 段级配器
+  if (Array.isArray(seg.tracks)) {
+    const tr = [];
+    const seen = new Set();
+    const cnt = {};
+    for (const t of seg.tracks) {
+      const role = ROLES.includes(t?.role) ? t.role : null;
+      const inst = INSTS.includes(t?.inst) ? t.inst : null;
+      if (!role || !inst) continue;
+      if ((cnt[role] || 0) >= (role === 'harm' ? 2 : 1)) continue;
+      if (role !== 'amb' && AMB.includes(inst)) continue;
+      if (role === 'amb' && !AMB.includes(inst)) continue;
+      if (role === 'perc' && !PERC.includes(inst)) continue;
+      if (seen.has(inst)) continue;
+      cnt[role] = (cnt[role] || 0) + 1;
+      seen.add(inst);
+      tr.push({ role, inst });
+      if (tr.length >= 6) break;
+    }
+    if (tr.length) out.tracks = tr;
+  }
+  return out;
+}
+
 function sanitize(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const out = {};
+
+  // 多段组曲
+  if (Array.isArray(raw.segments) && raw.segments.length) {
+    const segs = raw.segments.map(sanitizeSegment).filter(Boolean).slice(0, 6);
+    if (segs.length >= 2) {
+      return {
+        title: String(raw.title || '').replace(/[《》\s]/g, '').slice(0, 8) || '无题',
+        key: KEYS.includes(raw.key) ? raw.key : 'C',
+        segments: segs,
+        space: SPACES.includes(raw.atmosphere?.space) ? raw.atmosphere.space : 'hall',
+        dynamics: DYNAMICS.includes(raw.atmosphere?.dynamics) ? raw.atmosphere.dynamics : 'natural',
+        reason: String(raw.reason || '').slice(0, 80),
+        segmented: true,
+      };
+    }
+    // 只有一段就退回单段逻辑
+    raw = { ...raw, ...segs[0], segments: undefined };
+  }
+
   out.title = String(raw.title || '').replace(/[《》\s]/g, '').slice(0, 8) || '无题';
   out.mood = MOODS.includes(raw.mood) ? raw.mood : 'qingya';
   out.mode = Number.isFinite(+raw.mode) ? clamp(Math.round(+raw.mode), 0, 4) : 0;

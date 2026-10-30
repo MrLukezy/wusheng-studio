@@ -1,6 +1,6 @@
 // 五声工坊 · 交互层
 import { Player } from './player.js';
-import { compose, defaultTracks, ROLE_IDS } from './composer.js';
+import { compose, defaultTracks, ROLE_IDS, TRANSITIONS, ARCS } from './composer.js';
 import {
   TEXTURES, HARMONY_STYLES, BANSHI, ORNAMENT_LEVELS, DYNAMICS, SPACES, FORMS, JOINTS,
   PARAM_DOC, BAYIN,
@@ -24,6 +24,9 @@ const DEFAULTS = {
   texture: 'heterophony', harmony: 'open5', form: 'qichengzhuanhe', joint: 'yuyaowei',
   ornament: 'some', dynamics: 'natural', banship: 'tempoCurve', space: 'hall',
   locks: {},
+  segments: null,      // null = 单段（用全局参数）
+  segBars: 24,
+  segTransition: 'bridge',
 };
 
 let settings = loadSettings();
@@ -150,7 +153,10 @@ function initControls() {
 
   $('moodChips').innerHTML = MOODS.map(m =>
     `<button class="chip" data-mood="${m.id}" title="${m.desc}">${m.name}</button>`).join('');
+  $('segTransition').innerHTML = Object.values(TRANSITIONS)
+    .map(t => `<option value="${t.id}">${t.name}</option>`).join('');
   renderTimbres();
+  renderSegs();
   syncUI();
 }
 
@@ -207,6 +213,7 @@ function syncUI() {
   $('barsVal').textContent = settings.bars;
   $('durHint').textContent = `≈ ${fmt(settings.bars * 240 / settings.bpm)}`;
   $('seed').value = settings.seed;
+  if ($('segBars')) { $('segBars').value = settings.segBars || 24; $('segBarsVal').textContent = settings.segBars || 24; }
   $('aiToggle').checked = !!settings.ai;
   $('loopToggle').checked = !!settings.loop;
   $('texture').value = settings.texture;
@@ -218,6 +225,91 @@ function syncUI() {
   $('banship').value = settings.banship;
   $('space').value = settings.space;
   document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.mood === settings.mood));
+}
+
+/* ---------------- 段落结构 ---------------- */
+function segsOf() {
+  if (!Array.isArray(settings.segments) || !settings.segments.length) {
+    // 从当前全局设置派生一个单段
+    return [{
+      mood: settings.mood, bars: settings.segBars || 24,
+      mode: settings.mode, bpm: settings.bpm, density: settings.density,
+      texture: settings.texture, harmony: settings.harmony,
+      ornament: settings.ornament, dynamics: settings.dynamics,
+      transitionIn: 'cut', label: MOOD_BY_ID[settings.mood]?.name || '主段',
+    }];
+  }
+  return settings.segments;
+}
+function setSegs(list) {
+  settings.segments = list.length ? list : null;
+  saveSettings();
+  renderSegs();
+  if (piece) flagPending();
+}
+function renderSegs() {
+  const list = segsOf();
+  const isMulti = !!(settings.segments && settings.segments.length);
+  $('segList').innerHTML = list.map((sg, i) => {
+    const mood = MOOD_BY_ID[sg.mood] || MOOD_BY_ID.qingya;
+    const moods = MOODS.map(m => `<option value="${m.id}" ${m.id === sg.mood ? 'selected' : ''}>${m.name}</option>`).join('');
+    return `<div class="seg-row" data-idx="${i}" style="--c:${mood.color}">
+      <span class="swatch"></span>
+      <select class="seg-mood" data-idx="${i}">${moods}</select>
+      <input class="bars-in" data-idx="${i}" type="number" min="2" max="48" value="${sg.bars || ''}" placeholder="自动" title="小节数">
+      <select class="seg-trans" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>
+        ${Object.values(TRANSITIONS).map(t => `<option value="${t.id}" ${(sg.transitionIn || 'cut') === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+      </select>
+      <div class="ops">
+        <button class="up" data-idx="${i}" ${i === 0 ? 'disabled' : ''} title="上移">↑</button>
+        <button class="del" data-idx="${i}" ${list.length <= 1 ? 'disabled' : ''} title="删除">×</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('segList').querySelectorAll('.seg-mood').forEach(el => {
+    el.addEventListener('change', () => {
+      const i = +el.dataset.idx, list2 = segsOf();
+      list2[i] = { ...list2[i], mood: el.value, label: MOOD_BY_ID[el.value]?.name };
+      // 换情绪时同步该段的默认速度与配器
+      const m = MOOD_BY_ID[el.value];
+      if (m) { list2[i].bpm = m.bpm; list2[i].density = Math.round(m.density * 100); }
+      setSegs(list2);
+    });
+  });
+  $('segList').querySelectorAll('.bars-in').forEach(el => {
+    el.addEventListener('change', () => {
+      const i = +el.dataset.idx, list2 = segsOf();
+      list2[i] = { ...list2[i], bars: Number(el.value) || null };
+      setSegs(list2);
+    });
+  });
+  $('segList').querySelectorAll('.seg-trans').forEach(el => {
+    el.addEventListener('change', () => {
+      const i = +el.dataset.idx, list2 = segsOf();
+      list2[i] = { ...list2[i], transitionIn: el.value };
+      setSegs(list2);
+    });
+  });
+  $('segList').querySelectorAll('.up').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = +el.dataset.idx; if (i === 0) return;
+      const list2 = segsOf();
+      [list2[i - 1], list2[i]] = [list2[i], list2[i - 1]];
+      setSegs(list2);
+    });
+  });
+  $('segList').querySelectorAll('.del').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = +el.dataset.idx, list2 = segsOf();
+      if (list2.length <= 1) return;
+      list2.splice(i, 1);
+      setSegs(list2);
+    });
+  });
+  $('segBars').value = settings.segBars;
+  $('segBarsVal').textContent = settings.segBars;
+  $('segTransition').value = settings.segTransition;
 }
 
 /* ---------------- 参数锁 ---------------- */
@@ -351,6 +443,34 @@ async function generate() {
       const res = await callArrange(s.inspire);
       if (res.ok && res.data) {
         ai = res.data;
+        // 多段组曲：AI 直接给段落结构
+        if (ai.segmented && Array.isArray(ai.segments)) {
+          settings.segments = ai.segments.map((sg, i) => ({
+            mood: sg.mood,
+            bars: sg.bars,
+            bpm: sg.bpm,
+            mode: sg.mode,
+            density: sg.density != null ? Math.round(sg.density * 100) : undefined,
+            texture: sg.texture, harmony: sg.harmony,
+            ornament: sg.ornament, dynamics: sg.dynamics,
+            tracks: sg.tracks,
+            transitionIn: i === 0 ? 'cut' : (sg.transitionIn || 'bridge'),
+            label: sg.label || MOOD_BY_ID[sg.mood]?.name || sg.mood,
+          }));
+          if (ai.key) settings.key = pick('key', ai.key);
+          settings.segBars = ai.segments.reduce((a, sg) => a + (sg.bars || 8), 0);
+          settings.title = ai.title;
+          settings.reason = ai.reason;
+          renderSegs();
+          syncUI();
+          status(`AI 排了 ${ai.segments.length} 段：${ai.segments.map(sg => sg.label || sg.mood).join(' → ')}`, 'ok');
+          seedNum = Math.floor(Math.random() * 1e9);
+          settings.seed = String(seedNum);
+          await buildPiece({ seed: seedNum, engine: 'llm', title: ai.title, reason: ai.reason });
+          clearPending();
+          closeGen();
+          return;
+        }
         // 锁定的字段一律保留当前值，不被 AI 覆盖
         settings.mood = pick('mood', ai.mood);
         settings.mode = pick('mode', ai.mode);
@@ -455,11 +575,13 @@ async function buildPiece({ seed, engine, title, reason, onProgress, mood, mode,
     texture: settings.texture, harmony: settings.harmony, form: settings.form,
     joint: settings.joint, ornament: settings.ornament, dynamics: settings.dynamics,
     banship: settings.banship, space: settings.space,
+    segments: settings.segments && settings.segments.length > 1 ? settings.segments : null,
   };
   const p = compose({ ...use, seed, engine, title, reason });
   await player.build(p, onProgress);
   piece = p;
-  settings.tracks = p.spec;
+  // 多段模式下各段自带配器，不要把并集写回全局设置，否则下次单段生成会被污染
+  if (!p.meta.segmented) settings.tracks = p.spec;
   player.loop = !!p.meta.loop;
   player.stop();
   player.mute.clear(); player.solo = null;
@@ -672,6 +794,22 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// 多段模式下时间轴是「等效拍」，与真实小节号不成正比；
+// 这里把等效拍换算回真实小节号，供刻度标注
+function realBarAt(beat) {
+  if (!piece?.meta?.segmented) return beat / 4;
+  const secs = piece.sections || [];
+  for (const s2 of secs) {
+    const end = s2.endBeat != null ? s2.endBeat : s2.startBeat + s2.bars * 4;
+    if (beat <= end || s2 === secs[secs.length - 1]) {
+      const span = Math.max(1, end - s2.startBeat);
+      const ratio = Math.max(0, Math.min(1, (beat - s2.startBeat) / span));
+      return (s2.startBar || 0) + ratio * s2.bars;
+    }
+  }
+  return beat / 4;
+}
+
 function drawStatic() {
   const ctx = staticCtx;
   ctx.clearRect(0, 0, L.w, L.h);
@@ -681,13 +819,15 @@ function drawStatic() {
   const totalBeats = piece.meta.beats;
 
   piece.sections.forEach((s, i) => {
-    const x0 = xForBeat(s.startBeat), x1 = xForBeat(s.startBeat + s.bars * 4);
+    const endB = s.endBeat != null ? s.endBeat : s.startBeat + s.bars * 4;
+    const x0 = xForBeat(s.startBeat), x1 = xForBeat(endB);
     ctx.fillStyle = i % 2 ? 'rgba(255,255,255,.016)' : 'rgba(255,255,255,.005)';
     ctx.fillRect(x0, L.padT - 12, x1 - x0, L.h - L.padT - L.padB);
-    ctx.fillStyle = 'rgba(238,203,141,.92)';
+    ctx.fillStyle = s.color ? hexA(s.color, 0.95) : 'rgba(238,203,141,.92)';
     ctx.font = '11.5px "Songti SC", "PingFang SC", serif';
     ctx.textAlign = 'left';
-    ctx.fillText(s.name, x0 + 7, L.padT - 5);
+    const label = piece.meta.segmented && s.bpm ? `${s.name} ${s.bpm}` : s.name;
+    ctx.fillText(label, x0 + 7, L.padT - 5);
     ctx.strokeStyle = 'rgba(217,164,65,.18)';
     ctx.beginPath(); ctx.moveTo(x0, L.padT - 11); ctx.lineTo(x0 + 22, L.padT - 11); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,.05)';
@@ -714,11 +854,14 @@ function drawStatic() {
     ctx.strokeStyle = bar ? 'rgba(255,255,255,.10)' : 'rgba(255,255,255,.03)';
     ctx.beginPath(); ctx.moveTo(x, L.padT - 12); ctx.lineTo(x, L.h - L.padB); ctx.stroke();
     if (bar) {
-      const every = L.w < 620 ? 4 : 1; // 窄屏每 4 小节标一次，避免挤成一团
-      if ((b / 4) % every === 0) {
+      const rb = realBarAt(b);
+      // 只用「接近整数」的真实小节号来标，避免多段模式下刻度糊成一片
+      const near = Math.abs(rb - Math.round(rb)) < 0.22;
+      const every = L.w < 620 ? 4 : (piece.meta.segmented ? 2 : 1);
+      if (near && Math.round(rb) % every === 0) {
         ctx.fillStyle = 'rgba(255,255,255,.30)';
         ctx.font = '9.5px sans-serif'; ctx.textAlign = 'left';
-        ctx.fillText(String(b / 4 + 1), x + 3, L.h - 4);
+        ctx.fillText(String(Math.round(rb) + 1), x + 3, L.h - 4);
       }
     }
   }
@@ -1091,7 +1234,8 @@ function bind() {
   $('dice').addEventListener('click', () => {
     settings.seed = String(Math.floor(Math.random() * 999999));
     seedSource = 'user';
-    $('seed').value = settings.seed; saveSettings();
+    $('seed').value = settings.seed;
+  if ($('segBars')) { $('segBars').value = settings.segBars || 24; $('segBarsVal').textContent = settings.segBars || 24; } saveSettings();
     if (piece) { seedNum = +settings.seed; flagPending(); }
   });
 
@@ -1134,6 +1278,52 @@ function bind() {
     toast('已清空锁定');
   });
   $('btnLockTracks').addEventListener('click', () => toggleLock('tracks'));
+  $('btnAddSeg').addEventListener('click', () => {
+    const list = segsOf();
+    const used = new Set(list.map(s => s.mood));
+    const pick = MOODS.find(m => !used.has(m.id)) || MOODS[0];
+    list.push({ mood: pick.id, bars: 8, bpm: pick.bpm, transitionIn: 'bridge', label: pick.name });
+    setSegs(list);
+  });
+  $('btnArc').addEventListener('click', e => {
+    e.stopPropagation();
+    const menu = $('arcMenu');
+    if (!menu.hidden) { menu.hidden = true; return; }
+    menu.innerHTML = Object.values(ARCS).map(a =>
+      `<button data-arc="${a.id}"><b>${a.name}</b><em>${a.desc}</em></button>`).join('');
+    menu.hidden = false;
+    menu.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        const arc = ARCS[b.dataset.arc];
+        const n = arc.moods.length;
+        const per = Math.max(4, Math.round((settings.segBars || 24) / n));
+        setSegs(arc.moods.map((mid, i) => ({
+          mood: mid, bars: per, bpm: MOOD_BY_ID[mid]?.bpm,
+          density: Math.round((MOOD_BY_ID[mid]?.density ?? 0.5) * 100),
+          transitionIn: i === 0 ? 'cut' : 'bridge',
+          label: MOOD_BY_ID[mid]?.name || mid,
+        })));
+        menu.hidden = true;
+        toast(`已套用：${arc.name}`);
+      });
+    });
+  });
+  document.addEventListener('click', e => {
+    if (!$('arcMenu').hidden && !e.target.closest('.struct-card')) $('arcMenu').hidden = true;
+  });
+  $('segBars').addEventListener('input', () => {
+    settings.segBars = +$('segBars').value;
+    $('segBarsVal').textContent = settings.segBars;
+    saveSettings();
+    if (piece) flagPending();
+  });
+  $('segTransition').addEventListener('change', () => {
+    settings.segTransition = $('segTransition').value;
+    // 应用到所有非首段
+    const list = segsOf();
+    for (let i = 1; i < list.length; i++) list[i].transitionIn = settings.segTransition;
+    setSegs(list);
+  });
   $('btnParamDoc').addEventListener('click', openParamDoc);
   $('closeParam').addEventListener('click', () => $('paramModal').hidden = true);
   $('paramModal').addEventListener('click', e => { if (e.target.id === 'paramModal') $('paramModal').hidden = true; });

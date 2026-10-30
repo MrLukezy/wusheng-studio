@@ -221,7 +221,7 @@ function genPhrase(rng, opts) {
 
 /* ---------------- 主体 ---------------- */
 
-export function compose(opts = {}) {
+function composeOne(opts = {}) {
   const moodId = opts.mood || 'qingya';
   const mood = MOOD_BY_ID[moodId] || MOOD_BY_ID.qingya;
   const modeIdx = opts.mode ?? 0;
@@ -628,6 +628,7 @@ export function compose(opts = {}) {
   // 否则循环曲式帧数、时长显示、MIDI 时长都会错
   const actualEndBeat = notes.reduce((m, n) => Math.max(m, n.t + n.dur), 0);
   const effBeats = useBanshi ? Math.max(totalBeats, Math.ceil(actualEndBeat)) : totalBeats;
+  const _spb = secPerBeat;
 
   const usedTracks = tracks.filter(t => t.isAmb || notes.some(n => n.track === t.id));
   const ambience = usedTracks.filter(t => t.isAmb).map(t => ({ track: t.id, inst: t.inst }));
@@ -643,7 +644,7 @@ export function compose(opts = {}) {
     meta: {
       title, mood: moodId, moodName: mood.name, mode: modeIdx, modeName: mode.name,
       key: key.name, rootMidi, bpm, seed, density, bars: totalBars, beats: effBeats,
-      duration: effBeats * secPerBeat, loop,
+      duration: effBeats * secPerBeat, secPerBeat: _spb, loop,
       desc, engine: opts.engine || 'rule', reason: opts.reason || '',
       texture: textureId, harmony: harmonyId, form: formId, banshi: banshiId,
       ornament: ornamentId, dynamics: dynamicsId, space: spaceId, joint: jointId,
@@ -658,5 +659,330 @@ export function compose(opts = {}) {
     trackDefs: Object.fromEntries(usedTracks.map(t => [t.id, { color: t.color, pan: t.pan, name: t.name }])),
     ambience,
     spec: spec.map(t => ({ role: t.role, inst: t.inst })),
+  };
+}
+
+/* ================================================================
+ * 多段拼接：把不同情绪的段落接成一首曲子
+ * ================================================================
+ * 设计要点：
+ *  1. 每段独立生成（自己的曲风/调式/速度/密度/织体/配器），
+ *     再用「秒」这个统一坐标把各段接起来——段间速度可以完全不同。
+ *  2. 拼接后折算回统一 BPM 的「等效拍」，播放器只认一条时间轴。
+ *  3. 段间衔接有三种方式：
+ *       - cut    硬切：直接换（适合对比强烈的段落）
+ *       - bridge 过渡：段尾留 1 拍空，速度线性插值，配器渐入
+ *       - attacca 紧接：不留空，末音延长到下一段首音
+ *  4. 主音全曲统一（避免生硬转调），调式可逐段变化——同主音换调式
+ *     产生明暗变化，这是最自然的「情绪转折」手段。
+ */
+
+// 段级「重量」：影响该段的力度与配器厚度。
+// 沉重不等于响，而是低音区、慢、力度扎实——所以权重同时作用于力度与低音占比。
+const SEG_WEIGHT = {
+  chanyi: 0.78, qingya: 0.86, tianyuan: 0.95, gongting: 1.0,
+  huankuai: 1.08, xiandai: 1.02, jianghu: 1.15, cangliang: 1.22, beige: 1.18,
+};
+
+export const TRANSITIONS = {
+  cut: { id: 'cut', name: '硬切', short: '切', desc: '直接换段，对比强烈，适合欢快转沉重这类明显转折。' },
+  bridge: { id: 'bridge', name: '过渡', short: '渡', desc: '段尾留半拍气口，速度与力度线性过渡，衔接更自然。' },
+  attacca: { id: 'attacca', name: '紧接', short: '接', desc: '不留缝隙，前段末音延到后段首音，像一口气唱下来。' },
+};
+
+// 常见拼法预设：用户不想逐段调时可以直接选
+export const ARCS = {
+  riseFall: {
+    id: 'riseFall', name: '欢快→舒缓→沉重', short: '起落',
+    desc: '三类情绪的经典叙事弧：先扬后抑，收在低沉。',
+    moods: ['huankuai', 'qingya', 'cangliang'],
+  },
+  dawn: {
+    id: 'dawn', name: '静谧→明亮→开阔', short: '破晓',
+    desc: '由静入动，从幽暗走向开阔，适合画面感强的叙事。',
+    moods: ['chanyi', 'tianyuan', 'gongting'],
+  },
+  battle: {
+    id: 'battle', name: '肃穆→激烈→苍凉', short: '战事',
+    desc: '庄重开场、激烈中段、荒凉收尾，史诗感的典型结构。',
+    moods: ['gongting', 'jianghu', 'cangliang'],
+  },
+  journey: {
+    id: 'journey', name: '轻快→辽阔→思乡', short: '行旅',
+    desc: '出门时的轻快、途中的辽阔、夜深时的思乡。',
+    moods: ['tianyuan', 'xiandai', 'beige'],
+  },
+  tension: {
+    id: 'tension', name: '平静→紧张→爆发→平静', short: '张力',
+    desc: '四段张力结构，先压后放再收回。',
+    moods: ['chanyi', 'beige', 'jianghu', 'qingya'],
+  },
+};
+
+const clampT = (x, a, b) => (x < a ? a : x > b ? b : x);
+
+/**
+ * 把用户给的段配置补全成完整参数
+ * seg 可为 null（表示单段，全部用全局参数）
+ */
+function resolveSegment(seg, globalOpts, index, total) {
+  // 注意：多段模式下不使用全局 tracks —— 每段应各有配器，
+  // 否则整曲会被"上一次单段生成的配器"统一掉，失去段落对比。
+  const base = {
+    mood: globalOpts.mood || 'qingya',
+    mode: globalOpts.mode,
+    bpm: globalOpts.bpm,
+    density: globalOpts.density,
+    texture: globalOpts.texture,
+    harmony: globalOpts.harmony,
+    ornament: globalOpts.ornament,
+    dynamics: globalOpts.dynamics,
+    form: globalOpts.form,
+    banship: globalOpts.banship,
+    tracks: null,
+    ...(seg || {}),
+  };
+  const mood = MOOD_BY_ID[base.mood] || MOOD_BY_ID.qingya;
+  return {
+    mood: mood.id,
+    moodName: mood.name,
+    mode: base.mode ?? 0,
+    bpm: clampT(Math.round(base.bpm || mood.bpm), 40, 200),
+    density: clampT(base.density ?? mood.density, 0.08, 1),
+    texture: base.texture || 'heterophony',
+    harmony: base.harmony || 'open5',
+    ornament: base.ornament || 'some',
+    dynamics: base.dynamics || 'natural',
+    form: base.form || (index === 0 || index === total - 1 ? 'qichengzhuanhe' : 'qichengzhuanhe'),
+    banship: base.banship || 'steady',
+    tracks: base.tracks && base.tracks.length ? base.tracks : defaultTracks(mood),
+    bars: clampT(Math.round(seg?.bars || 0), 0, 48) || null,
+    transitionIn: base.transitionIn || 'cut',
+    weight: base.weight,
+    label: base.label || mood.name,
+  };
+}
+
+export function compose(opts = {}) {
+  const rawSegs = Array.isArray(opts.segments) && opts.segments.length ? opts.segments : null;
+  const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9);
+  const keyName = opts.key || 'C';
+  const loop = !!opts.loop;
+  const space = opts.space || 'hall';
+
+  // 单段：走原路径，行为完全兼容
+  if (!rawSegs) {
+    return composeOne({
+      ...opts, seed, key: keyName, loop, space,
+      texture: opts.texture, harmony: opts.harmony, form: opts.form,
+      banship: opts.banship, ornament: opts.ornament, dynamics: opts.dynamics,
+      joint: opts.joint,
+    });
+  }
+
+  const totalBarsBudget = clampT(Math.round(opts.bars || 24), 6, 96);
+  // 未指定小节数的段，均分剩余预算
+  const fixedBars = rawSegs.reduce((a, s) => a + (Number(s?.bars) || 0), 0);
+  const free = rawSegs.filter(s => !Number(s?.bars)).length;
+  const autoBar = free > 0 ? Math.max(2, Math.round((totalBarsBudget - fixedBars) / free)) : 0;
+
+  const segs = rawSegs.map((s, i) => {
+    const r = resolveSegment(s, opts, i, rawSegs.length);
+    r.bars = Number(s?.bars) || autoBar || 4;
+    r.bars = clampT(r.bars, 2, 48);
+    return r;
+  });
+
+  // ---- 逐段生成 ----
+  const allNotes = [];
+  const segMeta = [];
+  const BASE_BPM = 90;
+  const baseSpb = 60 / BASE_BPM;
+  const SEG_GAP = 0.28;       // 段间气口（秒）
+  let secCursor = 0;          // 已累计的秒（含气口）
+  let barCursor = 0;          // 名义小节游标（仅用于显示）
+
+  segs.forEach((seg, i) => {
+    // 段前气口：第一段不加，其余按 transitionIn 决定
+    if (i > 0 && (seg.transitionIn || 'cut') !== 'attacca') secCursor += SEG_GAP;
+    const segStartBeat = secCursor / baseSpb;
+    const one = composeOne({
+      seed: `${seed}-seg${i}`,     // 每段独立种子，改一段不影响别的段
+      mood: seg.mood,
+      mode: seg.mode,
+      key: keyName,
+      bpm: seg.bpm,
+      density: seg.density,
+      bars: seg.bars,
+      bark: loop,
+      loop: false,                 // 段内不走循环语义，整曲才判断
+      texture: seg.texture,
+      harmony: seg.harmony,
+      form: seg.form,
+      banship: seg.banship,
+      ornament: seg.ornament,
+      dynamics: seg.dynamics,
+      space,
+      joint: opts.joint,
+      tracks: seg.tracks,
+      title: '',
+    });
+
+    const spb = 60 / seg.bpm;       // 该段每拍秒数
+
+    for (const n of one.notes) {
+      allNotes.push({
+        ...n,
+        track: n.track,
+        _seg: i,
+        t: (secCursor + n.t * spb) / baseSpb,
+        dur: Math.max(0.08, n.dur * spb / baseSpb),
+      });
+    }
+
+    // 段级力度塑形：weight 越大，力度越扎实、低音越厚
+    const weight = seg.weight ?? SEG_WEIGHT[seg.mood] ?? 1;
+    for (const n of allNotes) {
+      if (n._seg !== i) continue;
+      n.vel = clampT(n.vel * (0.72 + 0.34 * weight), 0.1, 1);
+    }
+
+    const segSec = one.meta.beats * spb;
+    segMeta.push({
+      index: i,
+      label: seg.label,
+      mood: seg.mood,
+      moodName: seg.moodName,
+      mode: seg.mode,
+      modeName: MODES[seg.mode]?.name || '',
+      bpm: seg.bpm,
+      bars: seg.bars,
+      startBar: barCursor,
+      startBeat: segStartBeat,
+      endBeat: (secCursor + segSec) / baseSpb,
+      duration: segSec,
+      transitionIn: seg.transitionIn,
+      tracks: seg.tracks,
+      color: MOOD_BY_ID[seg.mood]?.color || '#d9a441',
+    });
+
+    secCursor += segSec;
+    barCursor += seg.bars;
+  });
+
+  // ---- 段间衔接已在生成时按 transitionIn 插入气口 ----
+
+  // ---- 合并音轨 ----
+  // 按音符实际使用过的 track id 建轨（含 harm2 这类多实例），
+  // 乐器取该轨各段里出现的值，主奏可以显示成「琵琶→古筝→埙」。
+  const trackMap = new Map();
+  const segInstByTrack = segs.map(seg => {
+    // 段的 tracks 按 role 排序，与 composeOne 内部的 id 生成规则一致
+    const counter = {};
+    const map = {};
+    for (const t of seg.tracks) {
+      const n = (counter[t.role] = (counter[t.role] || 0) + 1);
+      const id = n === 1 ? t.role : `${t.role}${n}`;
+      map[id] = t.inst;
+    }
+    return map;
+  });
+
+  // 氛围轨没有音符，先按段配置补上
+  segs.forEach((seg, i) => {
+    for (const [tid, inst] of Object.entries(segInstByTrack[i])) {
+      if (!isAmb(inst) || trackMap.has(tid)) continue;
+      const R = ROLES.amb;
+      trackMap.set(tid, {
+        id: tid, role: 'amb', inst,
+        name: R.name, instName: INSTRUMENTS[inst]?.name || inst,
+        color: R.color, gain: R.gain, pan: R.pan, isAmb: true, instBySeg: {},
+      });
+    }
+  });
+
+  for (const n of allNotes) {
+    if (trackMap.has(n.track)) continue;
+    const role = String(n.track).replace(/\d+$/, '');
+    const R = ROLES[role] || ROLES.lead;
+    trackMap.set(n.track, {
+      id: n.track, role,
+      inst: n.inst,
+      name: R.name, instName: INSTRUMENTS[n.inst]?.name || n.inst,
+      color: R.color, gain: R.gain, pan: R.pan,
+      isAmb: isAmb(n.inst), instBySeg: {},
+    });
+  }
+  // 记录每段该轨用的乐器
+  segInstByTrack.forEach((map, i) => {
+    for (const [tid, inst] of Object.entries(map)) {
+      const t = trackMap.get(tid);
+      if (t) t.instBySeg[i] = inst;
+    }
+  });
+
+  const tracks = [...trackMap.values()];
+  // 每个轨可能在不同段换乐器，名称显示成「琵琶→古筝→埙」
+  for (const t of tracks) {
+    const insts = Object.values(t.instBySeg || {}).map(id => INSTRUMENTS[id]?.name || id);
+    const uniq = [...new Set(insts)];
+    if (uniq.length > 1) t.instName = uniq.join('→');
+    if (uniq.length) t.inst = Object.values(t.instBySeg)[0];
+  }
+
+  const totalSec = segMeta.reduce((a, s) => a + s.duration, 0)
+    + segMeta.slice(1).filter(s => (s.transitionIn || 'cut') !== 'attacca').length * SEG_GAP;
+  const effBeats = Math.ceil(totalSec / baseSpb);
+
+  const usedTracks = tracks.filter(t => t.isAmb || allNotes.some(n => n.track === t.id));
+  const ambience = usedTracks.filter(t => t.isAmb).map(t => ({ track: t.id, inst: t.inst }));
+
+  // 情绪弧线的文字描述
+  const arcText = segMeta.map(s => `${s.label}${s.bars}节`).join(' → ');
+  const desc = [
+    `组曲 · ${segMeta.length} 段`,
+    arcText,
+    `共 ${segMeta.reduce((a, s) => a + s.bars, 0)} 小节 · ${Math.round(totalSec)} 秒`,
+  ].join(' ｜ ');
+
+  allNotes.sort((a, b) => a.t - b.t);
+
+  return {
+    meta: {
+      title: opts.title || makeTitle(segMeta[0].mood, new Rng(`${seed}|title`)),
+      key: keyName,
+      rootMidi: (KEYS.find(k => k.name === keyName) || KEYS[0]).midi,
+      bpm: 90,
+      seed, density: opts.density ?? 0.5,
+      bars: segMeta.reduce((a, s) => a + s.bars, 0),
+      beats: effBeats,
+      duration: effBeats * baseSpb,
+      loop: false,
+      desc,
+      engine: opts.engine || 'rule',
+      reason: opts.reason || '',
+      mode: segMeta[0].mode,
+      modeName: segMeta[0].modeName,
+      mood: segMeta[0].mood,
+      moodName: segMeta[0].moodName,
+      space,
+      segmented: true,
+      segments: segMeta,
+      palette: usedTracks.map(t => t.inst),
+    },
+    notes: allNotes,
+    sections: segMeta.map(s => ({
+      name: s.label, startBar: s.startBar, bars: s.bars,
+      startBeat: s.startBeat, endBeat: s.endBeat,
+      mood: s.mood, bpm: s.bpm, color: s.color, segmented: true,
+    })),
+    tracks: usedTracks.map(t => ({
+      id: t.id, role: t.role, inst: t.inst, instName: t.instName,
+      name: t.name, color: t.color, gain: t.gain, pan: t.pan, isAmb: t.isAmb,
+    })),
+    trackDefs: Object.fromEntries(usedTracks.map(t => [t.id, { color: t.color, pan: t.pan, name: t.name }])),
+    ambience,
+    spec: usedTracks.map(t => ({ role: t.role, inst: t.inst })),
+    segments: segMeta,
   };
 }

@@ -650,3 +650,45 @@ pre.code code { color: #c8c2b6; font-family: ui-monospace, "SF Mono", Menlo, Con
 /* 扩大锁的点击热区，但不改变视觉尺寸 */
 .lk::marker { content: none; }
 .lk { margin: -3px 1px -3px 0; padding: 3px 1px; box-sizing: content-box; }
+
+/* ---------- 段落结构 ---------- */
+.struct-card .card-head { margin-bottom: 4px; }
+.seg-list { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.seg-row {
+  display: grid; grid-template-columns: 4px 1fr 46px 54px 42px;
+  gap: 6px; align-items: center; padding: 6px 7px; border-radius: 8px;
+  background: rgba(255, 255, 255, .022); border: 1px solid var(--line);
+  transition: .15s;
+}
+.seg-row:hover { border-color: var(--line-strong); }
+.seg-row .swatch { width: 4px; height: 26px; border-radius: 3px; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.seg-row select {
+  padding: 4px 20px 4px 7px; font-size: 11.5px; border-radius: 6px;
+  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+}
+.seg-row .bars-in { width: 100%; padding: 4px 6px; font-size: 11.5px; text-align: center; border-radius: 6px; }
+.seg-row .ops { display: flex; gap: 1px; justify-content: flex-end; }
+.seg-row .ops button {
+  width: 13px; height: 20px; font-size: 10px; color: var(--dim);
+  display: grid; place-items: center; border-radius: 3px;
+}
+.seg-row .ops button:hover { color: var(--ink); background: rgba(255, 255, 255, .07); }
+.seg-row .ops button:disabled { opacity: .25; cursor: not-allowed; }
+.seg-row .ops button.del:hover { color: var(--rose); }
+.seg-num { font-size: 9px; color: var(--dim); text-align: center; }
+.arc-menu {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: #14171e; border: 1px solid var(--line-strong); border-radius: 9px; margin-bottom: 10px;
+}
+.arc-menu[hidden] { display: none; }
+.arc-menu button {
+  text-align: left; padding: 7px 9px; border-radius: 6px; font-size: 11.5px; color: var(--muted);
+}
+.arc-menu button:hover { background: rgba(255, 255, 255, .06); color: var(--ink); }
+.arc-menu button b { color: var(--gold-soft); font-weight: 500; }
+.arc-menu button em { font-style: normal; font-size: 10px; color: var(--dim); display: block; margin-top: 2px; }
+.seg-total { margin-top: 4px; }
+.seg-total select { padding: 6px 24px 6px 9px; font-size: 12px; }
+@media (max-width: 720px) {
+  .seg-row { grid-template-columns: 4px 1fr 42px 50px 40px; }
+}

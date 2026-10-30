@@ -49,6 +49,23 @@
         <p class="gen-status" id="genStatus"></p>
       </section>
 
+      <section class="card struct-card">
+        <div class="card-head">
+          <h2>结构</h2>
+          <div class="head-actions">
+            <button class="btn-mini" id="btnArc">套用弧线</button>
+            <button class="btn-mini" id="btnAddSeg">＋段</button>
+          </div>
+        </div>
+        <p class="tip tight">多段拼接：每段可以有自己的曲风、速度与配器，接成一首曲子。</p>
+        <div class="seg-list" id="segList"></div>
+        <div class="arc-menu" id="arcMenu" hidden></div>
+        <div class="field-row seg-total">
+          <label class="field"><span>总长度 <b id="segBarsVal">24</b> 小节</span><input type="range" id="segBars" min="8" max="96" step="4" value="24"></label>
+          <label class="field"><span>衔接 <select id="segTransition"></select></span></label>
+        </div>
+      </section>
+
       <section class="card params-card">
         <div class="card-head">
           <h2>参数</h2>
@@ -221,6 +238,11 @@
           <li><b>板式</b>：散-慢-中-快-散的速度骨架，各段独立速度。</li>
           <li><b>八音</b>：金、石、土、革、丝、木、匏、竹，决定配器的材质搭配。</li>
         </ul>
+
+        <h3>多段拼接</h3>
+        <p>一首曲子可以由几段不同情绪的段落拼起来，而不是从头到尾一个味道。每段有自己的曲风、速度、密度、织体与配器。</p>
+        <p>关键在<b>衔接</b>：硬切直接换段，对比最强；过渡会在段尾留一口半拍气口，速度和力度线性变化；紧接则不留缝，前段末音延到后段首音。</p>
+        <p>主音全曲统一，靠<b>调式变化</b>（如宫→羽）制造明暗转折，比生硬转调自然得多。</p>
 
         <h3>循环曲式</h3>
         <p>打开后去掉引子与尾声，整首首尾相接：末小节的低音落到<b>回旋音</b>（纯五度就落属音，否则回主音），旋律提前收尾留一口气。渲染时多算 4 秒尾巴再<b>折回开头</b>，所以循环点没有断口，导出的 WAV 本身就是无缝循环。</p>
