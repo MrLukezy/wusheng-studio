@@ -57,7 +57,7 @@ export const HARMONY_STYLES = {
 /* ---------------- 板式 ---------------- */
 export const BANSHI = {
   tempoCurve: {
-    id: 'tempoCurve', name: '散-慢-中-快-散', short: '板式',
+    id: 'tempoCurve', name: '板式变速', short: '板式',
     desc: '传统曲式的速度骨架：散板引子起，慢板铺陈，中板推进，快板推向高潮，散板收束。',
   },
   steady: {
@@ -65,7 +65,7 @@ export const BANSHI = {
     desc: '全曲速度恒定，适合背景音乐与循环曲，不会突然变速。',
   },
   accelerando: {
-    id: 'accelerando', name: '渐快', short: '渐快',
+    id: 'accelerando', name: '逐步加速', short: '渐快',
     desc: '从慢板逐步加速到快板，情绪单向推进。',
   },
 };

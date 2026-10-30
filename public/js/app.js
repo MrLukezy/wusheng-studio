@@ -134,7 +134,7 @@ function initControls() {
   $('key').innerHTML = KEYS.map(k => `<option value="${k.name}">${k.name} 为主音</option>`).join('');
   const fill = (id, map, key = 'name') => {
     $(id).innerHTML = Object.values(map)
-      .map(v => `<option value="${v.id}">${v[key]}${v.short && v.short !== v[key] ? ' · ' + v.short : ''}</option>`)
+      .map(v => `<option value="${v.id}">${v[key]}</option>`)
       .join('');
   };
   fill('texture', TEXTURES);
