@@ -49,21 +49,46 @@
         <p class="gen-status" id="genStatus"></p>
       </section>
 
-      <section class="card">
-        <div class="card-head"><h2>参数</h2><span class="muted" id="paramHint">改动需重新生成</span></div>
-        <div class="field-row">
-          <label class="field"><span>调式</span><select id="mode"></select></label>
-          <label class="field"><span>主音</span><select id="key"></select></label>
+      <section class="card params-card">
+        <div class="card-head">
+          <h2>参数</h2>
+          <button class="btn-mini" id="btnParamDoc">说明</button>
         </div>
-        <label class="field range"><span>速度 <b id="bpmVal">68</b> BPM</span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
-        <label class="field range"><span>密度 <b id="densityVal">55%</b></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
-        <label class="field range"><span>长度 <b id="barsVal">20</b> 小节 <em id="durHint">≈ 1:10</em></span><input type="range" id="bars" min="8" max="48" step="1" value="20"></label>
+        <p class="tip tight" id="paramHint">改动需重新生成</p>
+
+        <div class="field-row">
+          <label class="field"><span>调式 <i class="q" data-doc="mode">?</i></span><select id="mode"></select></label>
+          <label class="field"><span>主音 <i class="q" data-doc="key">?</i></span><select id="key"></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>织体 <i class="q" data-doc="texture">?</i></span><select id="texture"></select></label>
+          <label class="field"><span>和声 <i class="q" data-doc="harmony">?</i></span><select id="harmony"></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>曲式 <i class="q" data-doc="form">?</i></span><select id="form"></select></label>
+          <label class="field"><span>句法 <i class="q" data-doc="joint">?</i></span><select id="joint"></select></label>
+        </div>
+
+        <label class="field range"><span>速度 <b id="bpmVal">68</b> BPM <i class="q" data-doc="bpm">?</i></span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
+        <label class="field range"><span>密度 <b id="densityVal">55%</b> <i class="q" data-doc="density">?</i></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
+        <label class="field range"><span>长度 <b id="barsVal">20</b> 小节 <em id="durHint">≈ 1:10</em> <i class="q" data-doc="bars">?</i></span><input type="range" id="bars" min="8" max="48" step="1" value="20"></label>
+
+        <div class="field-row">
+          <label class="field"><span>装饰 <i class="q" data-doc="ornament">?</i></span><select id="ornament"></select></label>
+          <label class="field"><span>力度 <i class="q" data-doc="dynamics">?</i></span><select id="dynamics"></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>速度走向 <i class="q" data-doc="banship">?</i></span><select id="banship"></select></label>
+          <label class="field"><span>空间 <i class="q" data-doc="space">?</i></span><select id="space"></select></label>
+        </div>
+
         <label class="ai-row compact">
           <span class="ai-text"><b>循环曲式</b><em>去掉引子与尾声，结尾落回旋音</em></span>
           <input type="checkbox" id="loopToggle" class="switch">
         </label>
+
         <div class="field-row seed">
-          <label class="field"><span>种子</span><input id="seed" inputmode="numeric" placeholder="随机"></label>
+          <label class="field"><span>种子 <i class="q" data-doc="seed">?</i></span><input id="seed" inputmode="numeric" placeholder="随机"></label>
           <button class="dice" id="dice" title="换一个种子">🎲</button>
         </div>
       </section>
@@ -151,7 +176,7 @@
       </div>
 
       <section class="card timbre-card">
-        <div class="card-head"><h2>音色库</h2><span class="muted">点击试听 · 共 17 种</span></div>
+        <div class="card-head"><h2>音色库</h2><span class="muted" id="timbreCount">点击试听</span></div>
         <div id="timbreList" class="timbre-strip"></div>
       </section>
     </section>
@@ -179,10 +204,31 @@
         </table>
         <h3>五种调式</h3>
         <p>同一组五声，换主音即成不同调式：<b>宫</b>堂正、<b>商</b>清冽、<b>角</b>摇曳、<b>徵</b>热烈、<b>羽</b>幽远。</p>
+        <h3>民族编曲技法</h3>
+        <p>这些不是装饰性的名词，而是真的写进了生成算法：</p>
+        <ul class="tech-list">
+          <li><b>支声复调</b>：副声部沿用主旋律骨架，只在装饰与节奏上分叉，是中国器乐合奏的典型织体。</li>
+          <li><b>鱼咬尾</b>：下句首音沿用上句末音，句句相衔。</li>
+          <li><b>换头合尾</b>：各句开头不同，结尾归到同一落音。</li>
+          <li><b>空五度</b>：只用根音与纯五度、不用三度，没有大小调明暗指向。</li>
+          <li><b>四度叠置</b>：以四五度代替三度叠和弦，五声色彩鲜明。</li>
+          <li><b>板式</b>：散-慢-中-快-散的速度骨架，各段独立速度。</li>
+          <li><b>八音</b>：金、石、土、革、丝、木、匏、竹，决定配器的材质搭配。</li>
+        </ul>
+
         <h3>循环曲式</h3>
         <p>打开后去掉引子与尾声，整首首尾相接：末小节的低音落到<b>回旋音</b>（纯五度就落属音，否则回主音），旋律提前收尾留一口气。渲染时多算 4 秒尾巴再<b>折回开头</b>，所以循环点没有断口，导出的 WAV 本身就是无缝循环。</p>
-        <h3>音色</h3>
-        <p>17 种音色全部逐采样合成：古筝/琵琶/古琴用弦模型，二胡用锯齿波族加弓噪，笛/箫/埙用加法合成，编钟/扬琴/锣用非谐分音，雨声/风声是连续纹理层。</p>
+        <h3>音色（八音）</h3>
+        <p>33 种音色按传统「八音」分类，全部逐采样合成：</p>
+        <table class="tbl">
+          <tr><th>类</th><th>音色</th></tr>
+          <tr><td>丝·弹拨</td><td>古筝 古琴 琵琶 柳琴 月琴 三弦 中阮 箜篌 扬琴</td></tr>
+          <tr><td>丝·拉弦</td><td>二胡 京胡 板胡</td></tr>
+          <tr><td>竹匏土</td><td>笛 箫 埙 笙 唢呐 管子 葫芦丝 巴乌 陶笛</td></tr>
+          <tr><td>金石</td><td>编钟 编磬 锣 碰铃</td></tr>
+          <tr><td>革木</td><td>鼓 排鼓 木鱼 梆子</td></tr>
+          <tr><td>电子/氛围</td><td>弦垫 低音 雨声 风声</td></tr>
+        </table>
         <h3>配器</h3>
         <p>每种曲风有一套 4–6 轨的默认配器，覆盖不同音色又保持清晰。例如江湖是「琵琶主奏 + 二胡应答 + 唢呐点染 + 鼓 + 低音」，禅意是「编钟 + 古琴 + 箫 + 木鱼 + 低音」。两轨副旋律会自动错开音区与节奏。</p>
         <p>参数改动不会立刻重排，点「生成编曲」才生效；只有换乐器、增删轨道这类明确动作会即时重排。</p>
@@ -303,6 +349,15 @@ sha256sum wusheng-studio.apk</code></pre>
         <li><b>无鉴权</b>：以上均为公开只读接口，不携带任何密钥。</li>
       </ul>
     </div>
+  </div>
+</div>
+
+<div class="modal" id="paramModal" hidden>
+  <div class="modal-box param-box">
+    <button class="close" id="closeParam">✕</button>
+    <h2>参数说明</h2>
+    <p class="tip">每个参数怎么影响听感。改动后点「生成编曲」才生效。</p>
+    <div class="param-doc-list" id="paramDocList"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

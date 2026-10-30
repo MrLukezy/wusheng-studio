@@ -6,6 +6,7 @@ import { Rng } from './rng.js';
 const TAIL_BEATS = 2.5;
 
 function makeIR(ctx, seconds = 2.6, decay = 2.4) {
+  seconds = Math.max(0.6, Math.min(8, seconds));
   const rate = ctx.sampleRate;
   const len = Math.floor(seconds * rate);
   const buf = ctx.createBuffer(2, len, rate);
@@ -74,8 +75,22 @@ export class Player {
   }
 
   // 渲染整首曲子：交给 Worker，主线程不阻塞
+  // 按 space 参数调整混响：wet 浓淡 + IR 长度
+  applySpace(space) {
+    const S = { dry: [0.08, 1.3], hall: [0.24, 2.6], temple: [0.42, 5.2], outdoor: [0.14, 2.2] };
+    const [wet, len] = S[space] || S.hall;
+    if (!this.ctx) return;
+    this.wet.gain.setTargetAtTime(wet, this.ctx.currentTime, 0.05);
+    this._irLen = len;
+    if (this._irSpace !== space) {
+      this._irSpace = space;
+      this.conv.buffer = makeIR(this.ctx, len, Math.max(1.4, len * 0.9));
+    }
+  }
+
   async build(piece, onProgress) {
     await this.ensure();
+    this.applySpace(piece.meta.space);
     if (this._worker === undefined) {
       this._worker = null;
       try {
@@ -331,6 +346,8 @@ export class Player {
   // 离线渲染（导出 WAV 用），与播放同样的图
   async renderOffline(piece, opts = {}) {
     const secPerBeat = 60 / piece.meta.bpm;
+    const SP = { dry: [0.08, 1.3], hall: [0.24, 2.6], temple: [0.42, 5.2], outdoor: [0.14, 2.2] };
+    const [wetAmt, irLen] = SP[piece.meta.space] || SP.hall;
     let endBeat = 0;
     for (const n of piece.notes) endBeat = Math.max(endBeat, n.t + n.dur);
     const loop = !!piece.meta.loop;
@@ -343,8 +360,8 @@ export class Player {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.knee.value = 24; comp.ratio.value = 3.2;
     comp.attack.value = 0.006; comp.release.value = 0.25;
-    const wet = ctx.createGain(); wet.gain.value = 0.24;
-    const conv = ctx.createConvolver(); conv.buffer = makeIR(ctx);
+    const wet = ctx.createGain(); wet.gain.value = wetAmt;
+    const conv = ctx.createConvolver(); conv.buffer = makeIR(ctx, irLen, Math.max(1.4, irLen * 0.9));
     master.connect(comp); comp.connect(ctx.destination);
     conv.connect(wet); wet.connect(master);
 

@@ -30,7 +30,7 @@ for (const id of Object.keys(INSTRUMENTS)) {
   const buf = renderNote(id, f, 0.8, 0.9, new Rng(42));
   const at = goertzel(buf, f), up = goertzel(buf, f * 1.0595), down = goertzel(buf, f * 0.9439);
   const dur = (buf.length / SR).toFixed(2);
-  if (id === 'drum' || id === 'muyu' || id === 'gong') {
+  if (['drum', 'muyu', 'gong', 'paigu', 'bangzi', 'pengling'].includes(id)) {
     // 无音高打击乐：只查能量与衰减
     const half = Math.floor(buf.length / 2);
     ok(peak(buf) > 0.5 && peak(buf.slice(half)) < peak(buf.slice(0, half)) * 0.6,

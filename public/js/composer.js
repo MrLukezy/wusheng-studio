@@ -3,6 +3,10 @@
 import { Rng } from './rng.js';
 import { MODES, KEYS, MOOD_BY_ID, makeTitle, stepToMidi, stepDegree, DEGREE_SEMIS } from './theory.js';
 import { INSTRUMENTS } from './synth.js';
+import {
+  TEXTURES, HARMONY_STYLES, BANSHI, ORNAMENT_LEVELS, DYNAMICS,
+  FORMS, MOOD_ENSEMBLE, BAYIN,
+} from './techniques.js';
 
 export const ROLES = {
   lead: { name: '主旋律', color: '#e7b45c', gain: 0.95, pan: -0.06 },
@@ -16,9 +20,20 @@ export const ROLE_IDS = Object.keys(ROLES);
 
 // 各乐器的舒适音区（音级步进，0 = 该八度宫音）
 const REGISTER = {
-  guqin: [1, 9], xiao: [2, 10], erhu: [4, 12], dizi: [5, 13], pipa: [4, 13],
-  suona: [5, 14], guzheng: [2, 12], bianzhong: [2, 11], yangqin: [3, 13],
-  xun: [3, 10], pad: [0, 8], bass: [-6, 0],
+  // 丝 — 弹拨
+  guqin: [1, 9], guzheng: [2, 12], pipa: [4, 13], liuqin: [7, 16],
+  yueqin: [4, 13], sanxian: [2, 11], ruan: [2, 11], konghou: [5, 15], yangqin: [3, 13],
+  // 丝 — 拉弦
+  erhu: [4, 12], jinghu: [7, 15], banhu: [5, 13],
+  // 竹 / 匏 / 土 — 吹管
+  dizi: [5, 14], xiao: [2, 10], xun: [3, 10], sheng: [4, 13],
+  suona: [6, 15], guanzi: [4, 12], hulusi: [4, 12], bawu: [3, 11], ocarina: [4, 12],
+  // 金 / 石
+  bianzhong: [2, 11], bianqing: [7, 16], gong: [-5, 2], pengling: [8, 16],
+  // 革 / 木
+  drum: [-5, 0], paigu: [-3, 4], muyu: [0, 4], bangzi: [4, 8],
+  // 电子
+  pad: [0, 8], bass: [-6, 0],
 };
 const isAmb = inst => INSTRUMENTS[inst]?.family === 'amb';
 const isPerc = inst => INSTRUMENTS[inst]?.family === 'perc';
@@ -34,39 +49,6 @@ function turnaroundDegree(mode) {
 }
 
 /* ---------------- 音轨规格 ---------------- */
-
-// 每个曲风的默认配器：4~5 轨，覆盖不同音色但保持清晰
-const MOOD_ENSEMBLE = {
-  qingya: [
-    { role: 'lead', inst: 'guzheng' }, { role: 'harm', inst: 'dizi' },
-    { role: 'harm', inst: 'yangqin' }, { role: 'bass', inst: 'bass' },
-  ],
-  huankuai: [
-    { role: 'lead', inst: 'pipa' }, { role: 'harm', inst: 'dizi' },
-    { role: 'harm', inst: 'yangqin' }, { role: 'perc', inst: 'drum' },
-    { role: 'bass', inst: 'bass' },
-  ],
-  cangliang: [
-    { role: 'lead', inst: 'xun' }, { role: 'harm', inst: 'xiao' },
-    { role: 'pad', inst: 'bianzhong' }, { role: 'perc', inst: 'gong' },
-    { role: 'bass', inst: 'bass' }, { role: 'amb', inst: 'wind' },
-  ],
-  chanyi: [
-    { role: 'lead', inst: 'bianzhong' }, { role: 'harm', inst: 'guqin' },
-    { role: 'pad', inst: 'xiao' }, { role: 'perc', inst: 'muyu' },
-    { role: 'bass', inst: 'bass' },
-  ],
-  jianghu: [
-    { role: 'lead', inst: 'pipa' }, { role: 'harm', inst: 'erhu' },
-    { role: 'harm', inst: 'suona' }, { role: 'perc', inst: 'drum' },
-    { role: 'bass', inst: 'bass' },
-  ],
-  xiandai: [
-    { role: 'lead', inst: 'guzheng' }, { role: 'harm', inst: 'erhu' },
-    { role: 'pad', inst: 'pad' }, { role: 'perc', inst: 'drum' },
-    { role: 'bass', inst: 'bass' }, { role: 'amb', inst: 'rain' },
-  ],
-};
 
 export function defaultTracks(mood) {
   const ens = MOOD_ENSEMBLE[mood.id];
@@ -117,9 +99,8 @@ export function normalizeTracks(list, mood) {
 
 /* ---------------- 曲式 ---------------- */
 
-function buildSections(bars, loop) {
+function buildSections(bars, loop, formId) {
   if (loop) {
-    // 循环曲式：不留引子/尾声，整段首尾相接
     const count = Math.min(8, Math.max(2, Math.round(bars / 4)));
     const names = ['起', '承', '转', '合', '展', '收', '变', '终'];
     const base = Math.floor(bars / count);
@@ -128,21 +109,40 @@ function buildSections(bars, loop) {
     for (let i = 0; i < count; i++) out.push({ name: names[i], bars: base + (i < extra ? 1 : 0) });
     return out;
   }
-  const intro = bars >= 14 ? 2 : 1;
-  const outro = bars >= 12 ? 2 : 1;
-  const body = Math.max(2, bars - intro - outro);
-  // 最多 8 个乐句，多余的节数平摊到各句，避免名字重复
-  const count = Math.min(8, Math.max(1, Math.ceil(body / 4)));
-  const names = ['起', '承', '转', '合', '展', '收', '变', '终'];
-  const base = Math.floor(body / count);
-  const extra = body - base * count;
-  const secs = [{ name: '引', bars: intro }];
-  for (let i = 0; i < count; i++) {
-    secs.push({ name: names[i], bars: base + (i < extra ? 1 : 0) });
-  }
-  secs.push({ name: '尾', bars: outro });
-  return secs;
+  const form = FORMS[formId] || FORMS.qichengzhuanhe;
+  // 按权重把总小节数分配到各段
+  const weights = form.plan.map(([, w]) => w);
+  const sumW = weights.reduce((a, b) => a + b, 0);
+  let used = 0;
+  const out = form.plan.map(([name, w], i) => {
+    let n = i === form.plan.length - 1
+      ? bars - used
+      : Math.max(1, Math.round(bars * w / sumW));
+    used += n;
+    return { name, bars: n };
+  });
+  // 修正舍入误差
+  const diff = bars - out.reduce((a, s2) => a + s2.bars, 0);
+  if (diff !== 0) out[out.length - 1].bars = Math.max(1, out[out.length - 1].bars + diff);
+  // 散板段不占整小节时，合并到相邻段避免出现 0 小节
+  return out.filter(s2 => s2.bars > 0);
 }
+
+/* ---------------- 乐句衔接：鱼咬尾 / 换头合尾 ---------------- */
+
+// 把上一句的尾音接到下一句的开头（鱼咬尾）
+function applyYaoWeiTail(phrase, prevTail) {
+  if (prevTail == null || !phrase.length) return phrase;
+  const first = phrase.reduce((a, b) => (a.t <= b.t ? a : b));
+  if (Math.abs(first.step - prevTail) > 4) return phrase; // 差太远就不硬接
+  first.step = prevTail;
+  return phrase;
+}
+
+const tailStepOf = (phrase) => {
+  const cad = phrase.find(n => n.cadence);
+  return cad ? cad.step : null;
+};
 
 /* ---------------- 旋律动机 ---------------- */
 
@@ -231,6 +231,19 @@ export function compose(opts = {}) {
   const density = clamp(opts.density ?? mood.density, 0.08, 1);
   const bars = clamp(Math.round(opts.bars || 20), 8, 48);
   const loop = !!opts.loop;
+  const textureId = opts.texture || 'heterophony';
+  const harmonyId = opts.harmony || 'open5';
+  const formId = opts.form || (loop ? 'loop' : 'qichengzhuanhe');
+  // 循环曲式必须匀速：否则首尾两段速度不同，循环点会「跳一下」
+  const banshiId = loop ? 'steady' : (opts.banship || 'tempoCurve');
+  const ornamentId = opts.ornament || 'some';
+  const dynamicsId = opts.dynamics || 'natural';
+  const spaceId = opts.space || 'hall';
+  const jointId = opts.joint || 'yuyaowei';
+  const texture = TEXTURES[textureId] || TEXTURES.heterophony;
+  const harmony = HARMONY_STYLES[harmonyId] || HARMONY_STYLES.open5;
+  const ornLevel = ORNAMENT_LEVELS[ornamentId] || ORNAMENT_LEVELS.some;
+  const dyn = DYNAMICS[dynamicsId] || DYNAMICS.natural;
   const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9);
   const spec = normalizeTracks(opts.tracks && opts.tracks.length ? opts.tracks : defaultTracks(mood), mood);
   // 注意：bpm 不进种子，改速度只改快慢，不重掷旋律
@@ -239,7 +252,7 @@ export function compose(opts = {}) {
   const rootMidi = key.midi;
   const secPerBeat = 60 / bpm;
 
-  const sections = buildSections(bars, loop);
+  const sections = buildSections(bars, loop, formId);
   const barSec = [];
   let cursor = 0;
   for (const sec of sections) {
@@ -251,6 +264,16 @@ export function compose(opts = {}) {
   const totalBars = cursor;
   const totalBeats = totalBars * 4;
   const beatOf = b => b * 4;
+
+  // 板式：各段速度倍率（散板更慢、快板更快）；匀速则全部 1
+  const SPEED_BY_NAME = { 散: 0.62, 慢: 0.82, 引: 0.8, 起: 0.95, 承: 1.0, 转: 1.12, 展: 1.18, 收: 1.05, 合: 1.0, 快: 1.35, 尾: 0.7 };
+  const useBanshi = banshiId !== 'steady';
+  const secSpeed = new Map();
+  sections.forEach((sec, i) => {
+    let v = useBanshi ? (SPEED_BY_NAME[sec.name] ?? 1) : 1;
+    if (banshiId === 'accelerando') v = 0.8 + 0.6 * (i / Math.max(1, sections.length - 1));
+    secSpeed.set(sec, v);
+  });
 
   // 建立音轨
   const tracks = [];
@@ -279,17 +302,22 @@ export function compose(opts = {}) {
   });
 
   // 段落力度（起承转合的能量曲线）
-  const secEnergy = { 引: 0.62, 起: 0.82, 承: 0.9, 转: 1.0, 合: 0.92, 展: 0.96, 尾: 0.7 };
+  // 段落能量：既覆盖四句体，也覆盖板式（散慢中快）
+  const secEnergy = {
+    引: 0.62, 散: 0.55, 慢: 0.68, 中: 0.85, 快: 1.0,
+    起: 0.82, 承: 0.9, 转: 1.0, 合: 0.92, 展: 0.96, 收: 0.88, 尾: 0.7,
+  };
 
   const leadReg = REGISTER[leadTrack.inst] || [3, 12];
   const contour = ['arch', 'asc', 'wave', 'desc'][rng.int(4)];
   const phraseMemo = {};
+  let prevTail = null; // 上一句落音，供鱼咬尾使用
 
   for (const sec of sections) {
     const name = sec.name;
     const energy = secEnergy[name] ?? 0.85;
 
-    if (name === '引') {
+    if (name === '引' || (name === '散' && sec === sections[0])) {
       for (const pt of padTracks) {
         for (let b = 0; b < sec.bars; b++) {
           const step = leadReg[0] - 5;
@@ -316,7 +344,7 @@ export function compose(opts = {}) {
       continue;
     }
 
-    if (name === '尾') {
+    if (name === '尾' || (name === '散' && sec === sections[sections.length - 1])) {
       const last = sec.startBar + sec.bars - 1;
       const cad = rng.pick(stepsWithDegree(mode.tonic, leadReg[0] + 1, leadReg[1] - 1)) || leadReg[0] + 2;
       // 尾段前半：一个短经过音，避免整段只有一个长音
@@ -368,19 +396,31 @@ export function compose(opts = {}) {
       })));
     }
 
-    // 倚音
-    if (mood.ornaments > 0.3) {
+    // 装饰音：程度由 ornament 参数决定（乘以曲风自带的倾向）
+    const ornP = { plain: 0.06, some: 0.34, rich: 0.75 }[ornamentId] * (0.6 + mood.ornaments * 0.6);
+    if (ornP > 0.02) {
       const extra = [];
       for (const n of phrase) {
-        if (!n.grace && !n.aux && n.dur >= 1 && rng.chance(mood.ornaments * 0.3)) {
+        if (n.grace || n.aux) continue;
+        if (n.dur >= 1 && rng.chance(ornP)) {
           extra.push({
             step: clamp(n.step + rng.pick([1, 1, -1, 2]), leadReg[0], leadReg[1]),
             t: n.t - 0.16, dur: 0.16, vel: 0.45, grace: true,
           });
         }
+        // 华丽时再加一个前倚音（同音快速交替）
+        if (ornamentId === 'rich' && n.dur >= 2 && rng.chance(ornP * 0.45)) {
+          extra.push({
+            step: clamp(n.step - 1, leadReg[0], leadReg[1]),
+            t: n.t - 0.3, dur: 0.14, vel: 0.36, grace: true,
+          });
+        }
       }
       phrase = phrase.concat(extra);
     }
+    // 鱼咬尾：本句首音沿用上句末音
+    if (jointId === 'yuyaowei' && prevTail != null) applyYaoWeiTail(phrase, prevTail);
+    prevTail = tailStepOf(phrase);
     for (const n of phrase) push(leadTrack, { ...n, vel: n.vel * energy });
 
     // 循环模式的最后一句：落音改到属音，留一口气给开头
@@ -398,27 +438,72 @@ export function compose(opts = {}) {
       }
     }
 
-    // 副旋律：与主旋律错开、落在下方三度内
+    // 副旋律：按织体决定关系
     harmTracks.forEach((ht, idx) => {
       const reg = REGISTER[ht.inst] || [2, 10];
-      const offset = (idx + 1) * 1.0;
-      const strong = phrase.filter(n => !n.grace && n.dur >= 1);
-      const picked = strong.filter((_, i) => i % (idx === 0 ? 2 : 3) === 0).slice(0, 3);
-      for (const n of picked) {
-        const step = clamp(n.step - rng.pick([2, 3, 2]), reg[0], reg[1]);
-        push(ht, { t: n.t + offset, dur: Math.max(1, n.dur * 0.9), step, vel: n.vel * 0.5 * energy });
+      const strong = phrase.filter(n => !n.grace && !n.aux && n.dur >= 0.5);
+      if (texture.id === 'unison') {
+        // 齐奏加花：跟着主旋律走，偶尔在上方加一个装饰音
+        for (const n of strong) {
+          const same = clamp(n.step + (idx === 0 ? 0 : 0), reg[0], reg[1]);
+          if (same > reg[1] || same < reg[0]) continue;
+          push(ht, { t: n.t + (idx === 0 ? 0 : 0.02), dur: n.dur, step: same, vel: n.vel * 0.46 * energy });
+          if (!n.cadence && n.dur >= 1 && rng.chance(0.32)) {
+            push(ht, { t: n.t + 0.18, dur: 0.18, step: clamp(same + 1, reg[0], reg[1]), vel: n.vel * 0.3 });
+          }
+        }
+      } else if (texture.id === 'layered') {
+        // 分层点染：只在句尾落一个长音
+        const cad = phrase.find(n => n.cadence);
+        if (cad) push(ht, { t: cad.t, dur: Math.max(2, cad.dur), step: clamp(cad.step - 2, reg[0], reg[1]), vel: 0.4 * energy });
+      } else if (texture.id === 'homophony') {
+        // 主调织体：与主旋律对齐，落在下方三度，时值拉长
+        const picked = strong.filter((_, i) => i % (idx === 0 ? 2 : 3) === 0);
+        for (const n of picked) {
+          push(ht, { t: n.t, dur: Math.max(1, n.dur * 1.1), step: clamp(n.step - 2, reg[0], reg[1]), vel: n.vel * 0.45 * energy });
+        }
+      } else {
+        // 支声复调：沿用主旋律骨架，只做加花与节奏分叉
+        const offset = (idx + 1) * 0.5;
+        for (const n of strong) {
+          const grace = rng.chance(0.42);
+          const step = clamp(n.step - (grace ? 1 : 0), reg[0], reg[1]);
+          if (step < reg[0] || step > reg[1]) continue;
+          push(ht, { t: n.t + offset, dur: Math.max(0.5, n.dur * 0.85), step, vel: n.vel * 0.48 * energy });
+          // 支声的特征：同一旋律的「变体」，在长音处补一个回旋
+          if (n.dur >= 1.5 && rng.chance(0.5)) {
+            push(ht, {
+              t: n.t + offset + n.dur * 0.55, dur: 0.3,
+              step: clamp(step + rng.pick([2, 1, -1]), reg[0], reg[1]), vel: 0.3 * energy,
+            });
+          }
+        }
       }
-      const cadStep = clamp((phrase.find(n => n.cadence)?.step ?? reg[0]) - 2, reg[0], reg[1]);
-      push(ht, { t: beatOf(sec.startBar + sec.bars - 1) + 3, dur: 1, step: cadStep, vel: 0.42 });
     });
 
-    // 铺底：每两小节一个和弦
+    // 铺底：按和声手法叠置
     for (const pt of padTracks) {
       for (let b = 0; b < sec.bars; b += 2) {
         const deg = rng.pick([0, 3, 4, 1]);
-        const step = clamp(deg - 5 + (REGISTER[pt.inst]?.[0] ?? 0), -6, 8);
-        push(pt, { t: beatOf(sec.startBar + b), dur: 8, step, vel: 0.34 * energy });
-        if (rng.chance(0.5)) push(pt, { t: beatOf(sec.startBar + b), dur: 8, step: step + 3, vel: 0.24 * energy });
+        const base = clamp(deg - 5 + (REGISTER[pt.inst]?.[0] ?? 0), -8, 8);
+        const t0 = beatOf(sec.startBar + b);
+        const dur = Math.min(8, sec.bars * 4 - b * 4);
+        if (harmony.id === 'none') continue;
+        push(pt, { t: t0, dur, step: base, vel: 0.34 * energy });
+        if (harmony.id === 'open5') {
+          // 只用纯五度（音级步进 +3），不用三度
+          push(pt, { t: t0, dur, step: base + 3, vel: 0.26 * energy });
+          if (rng.chance(0.35)) push(pt, { t: t0, dur, step: base + 7, vel: 0.14 * energy });
+        } else if (harmony.id === 'fourth') {
+          // 四度叠置：+2 是四度音级（五声里 3→5 为小三度，2→5 为纯四度）
+          push(pt, { t: t0, dur, step: base + 2, vel: 0.25 * energy });
+          push(pt, { t: t0, dur, step: base + 5, vel: 0.18 * energy });
+        } else if (harmony.id === 'addtone') {
+          // 三度叠置 + 加二度/六度色彩音
+          push(pt, { t: t0, dur, step: base + 2, vel: 0.27 * energy });
+          push(pt, { t: t0, dur, step: base + 4, vel: 0.2 * energy });
+          if (rng.chance(0.5)) push(pt, { t: t0, dur, step: base + 5, vel: 0.13 * energy });
+        }
       }
     }
   }
@@ -461,6 +546,39 @@ export function compose(opts = {}) {
     }
   }
 
+  // 板式：把绝对拍按各段速度折算成「等效拍」，
+  // 这样 player 用统一 BPM 就能得到变速效果（段内密度不变，段间快慢不同）
+  if (useBanshi) {
+    const spbBase = 60 / bpm;
+    let accSec = 0;
+    const segRanges = sections.map(sec => {
+      const v = secSpeed.get(sec) || 1;
+      const spb = spbBase / v;
+      const start = sec.startBeat, end = sec.startBeat + sec.bars * 4;
+      const rec = { start, end, accSec, spb };
+      accSec += sec.bars * 4 * spb;
+      return rec;
+    });
+    for (const n of notes) {
+      const seg = segRanges.find(r => n.t >= r.start && n.t < r.end) || segRanges[segRanges.length - 1];
+      const sec = seg.accSec + (n.t - seg.start) * seg.spb;
+      n.t = sec / spbBase;
+      n.dur = n.dur * seg.spb / spbBase;
+    }
+  }
+
+  // 力度：按 dynamics 拉开或压平「段间」的强弱对比
+  if (dynamicsId !== 'natural') {
+    const flat = dynamicsId === 'flat';
+    for (const n of notes) {
+      const sec = barSec[Math.min(barSec.length - 1, Math.max(0, Math.floor(n.t / 4)))];
+      const e = secEnergy[sec] ?? 0.85;
+      // flat: 把所有段拉向 0.85；dramatic: 以 0.85 为中心放大差距
+      const k = flat ? (0.85 / e) : (1 + (e - 0.85) * 1.2 / 0.85);
+      n.vel = clamp(n.vel * k, 0.12, 1);
+    }
+  }
+
   // 人声化微扰：允许轻微抢拍/拖拍，但绝不能跨过小节线，
   // 否则低密度时会出现「看起来空着」的小节
   for (const n of notes) {
@@ -478,7 +596,36 @@ export function compose(opts = {}) {
     n.dur = Math.max(0.12, n.dur * (1 + rng.gauss() * 0.05));
     n.vel = clamp(n.vel * (1 + rng.gauss() * 0.06), 0.15, 1);
   }
+  // 补洞：任何一个小节都不该完全没声音。
+  // 优先用铺底挂长音，没有铺底用低音，再没有就让主旋律延一个音。
+  {
+    const cover = new Array(totalBars).fill(0);
+    for (const n of notes) {
+      if (n.step == null) continue;
+      const b0 = Math.floor(n.t / 4);
+      const b1 = Math.floor((n.t + Math.max(0.4, n.dur)) / 4);
+      for (let b = Math.max(0, b0); b <= Math.min(cover.length - 1, b1); b++) cover[b]++;
+    }
+    const fillTrack = padTracks[0] || bassTrack || leadTrack;
+    const fillReg = REGISTER[fillTrack.inst] || [0, 8];
+    const holes = cover.map((c, i) => c === 0 ? i : -1).filter(i => i >= 0);
+    for (const bar of holes) {
+      const secName = barSec[bar] || '起';
+      const energy = secEnergy[secName] ?? 0.8;
+      const deg = rng.pick(stepsWithDegree(mode.tonic, fillReg[0], fillReg[1])) ?? Math.round((fillReg[0] + fillReg[1]) / 2);
+      push(fillTrack, {
+        t: beatOf(bar), dur: 4, step: deg,
+        vel: clamp(0.3 * energy, 0.16, 0.6),
+      });
+    }
+  }
+
   notes.sort((a, b) => a.t - b.t);
+
+  // 变速重映射后，实际末拍可能不再等于名义拍数，必须据实修正，
+  // 否则循环曲式帧数、时长显示、MIDI 时长都会错
+  const actualEndBeat = notes.reduce((m, n) => Math.max(m, n.t + n.dur), 0);
+  const effBeats = useBanshi ? Math.max(totalBeats, Math.ceil(actualEndBeat)) : totalBeats;
 
   const usedTracks = tracks.filter(t => t.isAmb || notes.some(n => n.track === t.id));
   const ambience = usedTracks.filter(t => t.isAmb).map(t => ({ track: t.id, inst: t.inst }));
@@ -493,9 +640,11 @@ export function compose(opts = {}) {
   return {
     meta: {
       title, mood: moodId, moodName: mood.name, mode: modeIdx, modeName: mode.name,
-      key: key.name, rootMidi, bpm, seed, density, bars: totalBars, beats: totalBeats,
-      duration: totalBeats * secPerBeat, loop,
+      key: key.name, rootMidi, bpm, seed, density, bars: totalBars, beats: effBeats,
+      duration: effBeats * secPerBeat, loop,
       desc, engine: opts.engine || 'rule', reason: opts.reason || '',
+      texture: textureId, harmony: harmonyId, form: formId, banshi: banshiId,
+      ornament: ornamentId, dynamics: dynamicsId, space: spaceId, joint: jointId,
       palette: usedTracks.map(t => t.inst),
     },
     notes,

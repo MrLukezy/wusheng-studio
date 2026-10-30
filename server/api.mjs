@@ -27,13 +27,24 @@ const LLM_KEY = ENV.MUSIC_LLM_KEY || '';
 const LLM_MODEL = ENV.MUSIC_LLM_MODEL || 'claude-sonnet-4-6';
 const ENABLED = !!(LLM_BASE && LLM_KEY);
 
-const MOODS = ['qingya', 'huankuai', 'cangliang', 'chanyi', 'jianghu', 'xiandai'];
+const MOODS = ['qingya', 'huankuai', 'cangliang', 'chanyi', 'jianghu', 'xiandai', 'gongting', 'tianyuan', 'beige'];
+const TEXTURES = ['heterophony', 'homophony', 'unison', 'layered'];
+const HARMONIES = ['open5', 'fourth', 'addtone', 'none'];
+const FORMS = ['classical', 'qichengzhuanhe', 'narrative', 'loop'];
+const ORNAMENTS = ['plain', 'some', 'rich'];
+const DYNAMICS = ['flat', 'natural', 'dramatic'];
+const SPACES = ['dry', 'hall', 'temple', 'outdoor'];
+const JOINTS = ['yuyaowei', 'huanTouHeWei', 'modu', 'duibi'];
 const KEYS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const ROLES = ['lead', 'harm', 'pad', 'bass', 'perc', 'amb'];
-const INSTS = ['guzheng', 'erhu', 'pipa', 'guqin', 'dizi', 'xiao', 'suona', 'xun',
-  'bianzhong', 'yangqin', 'gong', 'pad', 'bass', 'drum', 'muyu', 'rain', 'wind'];
+const INSTS = ['guzheng', 'guqin', 'pipa', 'liuqin', 'yueqin', 'sanxian', 'ruan', 'konghou', 'yangqin',
+  'erhu', 'jinghu', 'banhu',
+  'dizi', 'xiao', 'xun', 'sheng', 'suona', 'guanzi', 'hulusi', 'bawu', 'ocarina',
+  'bianzhong', 'bianqing', 'gong', 'pengling',
+  'drum', 'paigu', 'muyu', 'bangzi',
+  'pad', 'bass', 'rain', 'wind'];
 const AMB = ['rain', 'wind'];
-const PERC = ['drum', 'muyu', 'gong'];
+const PERC = ['drum', 'paigu', 'muyu', 'bangzi', 'gong', 'pengling'];
 
 /* ---------------- 限流 / 缓存 ---------------- */
 const HITS = new Map();       // ip -> [timestamps]
@@ -56,22 +67,58 @@ function allow(ip) {
 }
 
 /* ---------------- 提示词 ---------------- */
-const SYSTEM = `你是中国五声音阶（宫商角徵羽）编曲助手。根据用户描述设计一首曲子的参数，只输出 JSON。
-字段与取值：
-- title：2~5 个汉字曲名
-- mood：qingya(清雅)|huankuai(欢快)|cangliang(苍凉)|chanyi(禅意)|jianghu(江湖)|xiandai(现代)
-- mode：0宫 1商 2角 3徵 4羽（决定落音重心；羽、角偏暗，徵、宫偏亮）
-- key：C|D|E|F|G|A|B
-- bpm：40~160 整数
-- density：0.1~1 小数（音符密度）
-- bars：8~48 整数（每小节 4 拍，秒数 ≈ bars×240/bpm）
-- tracks：2~5 项，每项 {"role":..,"inst":..}
-  role 只能是 lead(主旋律,必须有且仅一个)|harm(副旋律)|pad(铺底)|bass(低音)|perc(打击)|amb(氛围)
-  inst 从 guzheng古筝,erhu二胡,pipa琵琶,guqin古琴,dizi笛,xiao箫,suona唢呐,xun埙,bianzhong编钟,yangqin扬琴,gong锣,pad弦垫,bass低音,drum鼓,muyu木鱼,rain雨声,wind风声 中选
-  约束：amb 只能用 rain/wind；perc 只能用 drum/muyu/gong
-- reason：一句不超过 30 字的中文说明，解释你的选择
-建议：安静/氛围类曲子至少保留一个低频（bass 或 pad）撑住底子；欢快/江湖类可加 perc；只有明确需要时才用 amb。
-只输出 JSON，不要 markdown 代码块，不要解释。`;
+const SYSTEM = `你是中国五声音阶（宫商角徵羽）的编曲顾问。用户会给你一句中文描述，你要把它翻译成一组可执行的编曲参数，只输出 JSON。
+
+## 你的知识
+- 五声=宫商角徵羽=简谱 1 2 3 5 6，无半音、无导音，天然温润、留白多。
+- 调式换主音即换色彩：宫堂正、商清冽、角摇曳（近小调）、徵热烈、羽幽远（近小调）。
+- 传统配器讲究「八音」：金石土木革丝木匏竹。丝（筝琴琵琶胡琴）最易抒情，竹（笛箫埙）最易写景，金石（钟磬锣）写庄重，革木（鼓梆木鱼）给骨点。
+- 织体有讲究：支声复调（同一旋律的不同变体并行）最传统；主调织体最现代；齐奏加花最饱满；分层点染最空灵。
+- 和声不用三度叠和弦：空五度最古，四度叠置次之，加音和弦带色彩。
+- 曲式常用「散-慢-中-快-散」；叙事用多段长卷；循环背景用闭环。
+- 乐句衔接常用鱼咬尾（下句首音接上句尾音）与换头合尾（各句开头不同、结尾同落）。
+- 描述里的「安静/空旷」要降低密度、拉长混响；「热烈/催人」要提高密度、加打击、减混响。
+
+## 输出字段
+{
+  "title": "2-5 个汉字的曲名",
+  "mood": "qingya|huankuai|cangliang|chanyi|jianghu|xiandai|gongting|tianyuan|beige",
+  "mode": 0-4,                 // 0宫 1商 2角 3徵 4羽
+  "key": "C|D|E|F|G|A|B",
+  "bpm": 40-160 整数,
+  "density": 0.1-1 小数,
+  "bars": 8-48 整数,           // 秒数 ≈ bars × 240 / bpm
+  "texture": "heterophony|homophony|unison|layered",
+  "harmony": "open5|fourth|addtone|none",
+  "form": "classical|qichengzhuanhe|narrative|loop",
+  "ornament": "plain|some|rich",
+  "dynamics": "flat|natural|dramatic",
+  "space": "dry|hall|temple|outdoor",
+  "joint": "yuyaowei|huanTouHeWei|modu|duibi",
+  "loop": true|false,          // 用户说背景/循环/不要停 时为 true
+  "tracks": [ {"role":"...","inst":"..."} ],
+  "reason": "不超过 40 字，说明你为何这样选"
+}
+
+## 音色池（inst 只能从这里选）
+丝-弹拨：guzheng古筝 guqin古琴 pipa琵琶 liuqin柳琴 yueqin月琴 sanxian三弦 ruan中阮 konghou箜篌 yangqin扬琴
+丝-拉弦：erhu二胡 jinghu京胡 banhu板胡
+竹/匏/土：dizi笛 xiao箫 xun埙 sheng笙 suona唢呐 guanzi管子 hulusi葫芦丝 bawu巴乌 ocarina陶笛
+金石：bianzhong编钟 bianqing编磬 gong锣 pengling碰铃
+革木：drum鼓 paigu排鼓 muyu木鱼 bangzi梆子
+电子：pad弦垫 bass低音
+氛围：rain雨声 wind风声
+
+## 配器规则
+- role ∈ lead(必须且仅一个) | harm(≤2) | pad(≤2) | bass(1) | perc(1) | amb(1)，总轨数 3-6。
+- amb 只能用 rain/wind；perc 只能用 drum/paigu/muyu/bangzi/gong/pengling。
+- 主旋律优先用有颗粒感的乐器（筝、琵琶、笛、二胡、埙），不要用 pad/bass 当主奏。
+- 想「不太单一」时，用 5-6 轨并把音区错开：主奏在高音区、副声部在中音区、低音在低音区。
+- 传统庄重场景（宫廷、祭祀、古意）优先编钟/编磬/笙/箜篌/古琴。
+
+## 要求
+- 只输出 JSON，不要 markdown 代码块，不要解释。
+- 参数必须与你给出的 reason 自洽。`;
 
 function userPrompt(prompt) {
   return `用户描述：${prompt}\n请给出编曲参数 JSON。`;
@@ -123,7 +170,16 @@ function sanitize(raw) {
   out.bpm = clamp(Math.round(+raw.bpm || 70), 40, 160);
   out.density = clamp(+raw.density || 0.5, 0.1, 1);
   out.bars = clamp(Math.round(+raw.bars || 20), 8, 48);
-  out.reason = String(raw.reason || '').slice(0, 60);
+  out.reason = String(raw.reason || '').slice(0, 80);
+  out.texture = TEXTURES.includes(raw.texture) ? raw.texture : 'heterophony';
+  out.harmony = HARMONIES.includes(raw.harmony) ? raw.harmony : 'open5';
+  out.form = FORMS.includes(raw.form) ? raw.form : 'qichengzhuanhe';
+  out.ornament = ORNAMENTS.includes(raw.ornament) ? raw.ornament : 'some';
+  out.dynamics = DYNAMICS.includes(raw.dynamics) ? raw.dynamics : 'natural';
+  out.space = SPACES.includes(raw.space) ? raw.space : 'hall';
+  out.joint = JOINTS.includes(raw.joint) ? raw.joint : 'yuyaowei';
+  out.loop = !!raw.loop;
+  if (out.form === 'loop') out.loop = true;
 
   const tracks = [];
   const seen = new Set();

@@ -1,6 +1,10 @@
 // 五声工坊 · 交互层
 import { Player } from './player.js';
 import { compose, defaultTracks, ROLE_IDS } from './composer.js';
+import {
+  TEXTURES, HARMONY_STYLES, BANSHI, ORNAMENT_LEVELS, DYNAMICS, SPACES, FORMS, JOINTS,
+  PARAM_DOC, BAYIN,
+} from './techniques.js';
 import { audioBufferToWav, downloadBlob } from './wav.js';
 import { downloadMidi } from './midi.js';
 import { INSTRUMENTS, renderDemo, renderAmbience } from './synth.js';
@@ -17,6 +21,8 @@ const API = 'api/arrange';
 const DEFAULTS = {
   inspire: '', mood: 'qingya', mode: 0, key: 'C', bpm: 68, density: 55,
   bars: 20, seed: '', ai: true, loop: false, tracks: null, title: '', reason: '',
+  texture: 'heterophony', harmony: 'open5', form: 'qichengzhuanhe', joint: 'yuyaowei',
+  ornament: 'some', dynamics: 'natural', banship: 'tempoCurve', space: 'hall',
 };
 
 let settings = loadSettings();
@@ -126,15 +132,23 @@ function optionsFor(role) {
 function initControls() {
   $('mode').innerHTML = MODES.map((m, i) => `<option value="${i}">${m.name}</option>`).join('');
   $('key').innerHTML = KEYS.map(k => `<option value="${k.name}">${k.name} 为主音</option>`).join('');
+  const fill = (id, map, key = 'name') => {
+    $(id).innerHTML = Object.values(map)
+      .map(v => `<option value="${v.id}">${v[key]}${v.short && v.short !== v[key] ? ' · ' + v.short : ''}</option>`)
+      .join('');
+  };
+  fill('texture', TEXTURES);
+  fill('harmony', HARMONY_STYLES);
+  fill('form', FORMS);
+  fill('joint', JOINTS);
+  fill('ornament', ORNAMENT_LEVELS);
+  fill('dynamics', DYNAMICS);
+  fill('banship', BANSHI);
+  fill('space', SPACES);
+
   $('moodChips').innerHTML = MOODS.map(m =>
     `<button class="chip" data-mood="${m.id}" title="${m.desc}">${m.name}</button>`).join('');
-  $('timbreList').innerHTML = Object.entries(INSTRUMENTS).map(([id, ins]) => `
-    <button class="timbre" data-inst="${id}" style="--c:${ins.color}" title="${ins.desc}">
-      <span class="dotc"></span>
-      <span class="nm">${ins.name}</span>
-      <span class="ds">${ins.family === 'amb' ? '氛围' : ins.family === 'perc' ? '打击' : ins.desc.split('·')[0].trim()}</span>
-      <span class="play">▶</span>
-    </button>`).join('');
+  renderTimbres();
   syncUI();
 }
 
@@ -158,6 +172,29 @@ function clearPending() {
   $('paramHint').classList.remove('dirty');
 }
 
+function renderTimbres() {
+  const groups = [
+    { name: '丝 · 弹拨', ids: ['guzheng', 'guqin', 'pipa', 'liuqin', 'yueqin', 'sanxian', 'ruan', 'konghou', 'yangqin'] },
+    { name: '丝 · 拉弦', ids: ['erhu', 'jinghu', 'banhu'] },
+    { name: '竹匏土 · 吹管', ids: ['dizi', 'xiao', 'xun', 'sheng', 'suona', 'guanzi', 'hulusi', 'bawu', 'ocarina'] },
+    { name: '金石 · 钟磬', ids: ['bianzhong', 'bianqing', 'gong', 'pengling'] },
+    { name: '革木 · 打击', ids: ['drum', 'paigu', 'muyu', 'bangzi'] },
+    { name: '电子 · 铺底', ids: ['pad', 'bass'] },
+    { name: '氛围', ids: ['rain', 'wind'] },
+  ];
+  $('timbreList').innerHTML = groups.map(g => {
+    const items = g.ids.filter(id => INSTRUMENTS[id]).map(id => {
+      const ins = INSTRUMENTS[id];
+      return `<button class="timbre" data-inst="${id}" style="--c:${ins.color}" title="${ins.name} · ${ins.desc}">
+        <span class="dotc"></span><span class="nm">${ins.name}</span><span class="play">▶</span>
+      </button>`;
+    }).join('');
+    return items ? `<div class="timbre-group"><h4>${g.name}</h4><div class="timbre-strip">${items}</div></div>` : '';
+  }).join('');
+  const total = Object.keys(INSTRUMENTS).length;
+  $('timbreCount').textContent = `点击试听 · 共 ${total} 种`;
+}
+
 function syncUI() {
   $('inspire').value = settings.inspire;
   $('mode').value = String(settings.mode);
@@ -170,6 +207,14 @@ function syncUI() {
   $('seed').value = settings.seed;
   $('aiToggle').checked = !!settings.ai;
   $('loopToggle').checked = !!settings.loop;
+  $('texture').value = settings.texture;
+  $('harmony').value = settings.harmony;
+  $('form').value = settings.form;
+  $('joint').value = settings.joint;
+  $('ornament').value = settings.ornament;
+  $('dynamics').value = settings.dynamics;
+  $('banship').value = settings.banship;
+  $('space').value = settings.space;
   document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.mood === settings.mood));
 }
 
@@ -230,6 +275,14 @@ function readForm() {
   settings.bars = +$('bars').value;
   settings.seed = $('seed').value.trim();
   settings.ai = $('aiToggle').checked;
+  settings.texture = $('texture').value;
+  settings.harmony = $('harmony').value;
+  settings.form = $('form').value;
+  settings.joint = $('joint').value;
+  settings.ornament = $('ornament').value;
+  settings.dynamics = $('dynamics').value;
+  settings.banship = $('banship').value;
+  settings.space = $('space').value;
   return settings;
 }
 
@@ -256,6 +309,10 @@ async function generate() {
         settings.bpm = ai.bpm; settings.density = Math.round(ai.density * 100);
         settings.bars = ai.bars; settings.tracks = ai.tracks;
         settings.title = ai.title; settings.reason = ai.reason;
+        for (const k of ['texture', 'harmony', 'form', 'joint', 'ornament', 'dynamics', 'space']) {
+          if (ai[k]) settings[k] = ai[k];
+        }
+        if (typeof ai.loop === 'boolean') settings.loop = ai.loop;
         bar.style.width = '55%';
         setGen(0.3, '配器已确定', ai.tracks.map(t => INSTRUMENTS[t.inst]?.name || t.inst).join(' + '));
         status(`AI 已选：${ai.tracks.map(t => INSTRUMENTS[t.inst]?.name || t.inst).join(' + ')}`, 'ok');
@@ -328,6 +385,9 @@ async function buildPiece({ seed, engine, title, reason, onProgress, mood, mode,
     bars: bars ?? settings.bars,
     loop: loop ?? settings.loop,
     tracks: tracks ?? settings.tracks,
+    texture: settings.texture, harmony: settings.harmony, form: settings.form,
+    joint: settings.joint, ornament: settings.ornament, dynamics: settings.dynamics,
+    banship: settings.banship, space: settings.space,
   };
   const p = compose({ ...use, seed, engine, title, reason });
   await player.build(p, onProgress);
@@ -848,6 +908,25 @@ async function audition(id) {
   } catch (e) { toast('试听失败：' + e.message); }
 }
 
+/* ---------------- 参数说明 ---------------- */
+const OPT_TABLES = {
+  texture: TEXTURES, harmony: HARMONY_STYLES, form: FORMS, joint: JOINTS,
+  ornament: ORNAMENT_LEVELS, dynamics: DYNAMICS, banship: BANSHI, space: SPACES,
+};
+function openParamDoc() {
+  const rows = Object.entries(PARAM_DOC).map(([key, doc]) => {
+    const tbl = OPT_TABLES[key];
+    const opts = doc.options
+      ? doc.options.map(o => `<span class="opt">${o}</span>`).join('')
+      : tbl
+        ? Object.values(tbl).map(v => `<span class="opt" title="${v.desc || ''}">${v.name}</span>`).join('')
+        : '';
+    return `<dl class="param-doc"><dt>${doc.label}</dt><dd>${doc.desc}${opts ? `<div class="opts">${opts}</div>` : ''}</dd></dl>`;
+  }).join('');
+  $('paramDocList').innerHTML = rows;
+  $('paramModal').hidden = false;
+}
+
 /* ---------------- APK / API 分栏 ---------------- */
 const API_BASE = location.origin + location.pathname.replace(/[^/]*$/, '');
 
@@ -926,6 +1005,15 @@ function bind() {
   $('density').addEventListener('input', () => { settings.density = +$('density').value; markDirty(); });
   $('bars').addEventListener('input', () => { settings.bars = +$('bars').value; markDirty(); });
   $('mode').addEventListener('change', () => { settings.mode = +$('mode').value; markDirty(); });
+  for (const id of ['texture', 'harmony', 'joint', 'ornament', 'dynamics', 'banship', 'space']) {
+    $(id).addEventListener('change', () => { settings[id] = $(id).value; markDirty(); });
+  }
+  $('form').addEventListener('change', () => {
+    settings.form = $('form').value;
+    // 选「闭环循环」曲式时，顺手打开循环开关
+    if (settings.form === 'loop') { settings.loop = true; $('loopToggle').checked = true; }
+    markDirty();
+  });
   $('key').addEventListener('change', () => { settings.key = $('key').value; markDirty(); });
   $('seed').addEventListener('input', e => { settings.seed = e.target.value; saveSettings(); });
   $('dice').addEventListener('click', () => {
@@ -955,6 +1043,9 @@ function bind() {
   $('btnMidi').addEventListener('click', exportMidi);
   $('btnSave').addEventListener('click', savePiece);
 
+  $('btnParamDoc').addEventListener('click', openParamDoc);
+  $('closeParam').addEventListener('click', () => $('paramModal').hidden = true);
+  $('paramModal').addEventListener('click', e => { if (e.target.id === 'paramModal') $('paramModal').hidden = true; });
   $('btnApk').addEventListener('click', () => openApkModal('download'));
   $('closeApk').addEventListener('click', () => $('apkModal').hidden = true);
   $('apkModal').addEventListener('click', e => { if (e.target.id === 'apkModal') $('apkModal').hidden = true; });

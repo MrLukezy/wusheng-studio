@@ -97,6 +97,27 @@ export const MOODS = [
     prog: [[0, 4, 1, 3], [4, 0, 3, 0], [1, 4, 0, 0]],
     color: '#a99bf0',
   },
+  {
+    id: 'gongting', name: '宫廷', desc: '钟磬笙篌，雅乐庄重',
+    bpm: 56, density: 0.32, swing: 0, drums: 0.22, ornaments: 0.28,
+    palette: ['bianzhong', 'sheng', 'konghou', 'pengling'],
+    prog: [[0, 0, 3, 0], [0, 3, 0, 0], [0, 4, 3, 0]],
+    color: '#d9c07a',
+  },
+  {
+    id: 'tianyuan', name: '田园', desc: '葫芦丝与笛，山水明快',
+    bpm: 84, density: 0.6, swing: 0, drums: 0.3, ornaments: 0.42,
+    palette: ['hulusi', 'dizi', 'liuqin', 'yueqin'],
+    prog: [[0, 3, 4, 0], [0, 4, 3, 0], [3, 0, 4, 0]],
+    color: '#8fc9a0',
+  },
+  {
+    id: 'beige', name: '北歌', desc: '京胡板胡，高亢苍劲',
+    bpm: 88, density: 0.62, swing: 0, drums: 0.55, ornaments: 0.5,
+    palette: ['jinghu', 'banhu', 'sanxian', 'bangzi'],
+    prog: [[0, 2, 3, 0], [0, 3, 2, 0], [3, 2, 0, 0]],
+    color: '#e06b5e',
+  },
 ];
 
 export const MOOD_BY_ID = Object.fromEntries(MOODS.map(m => [m.id, m]));
@@ -109,6 +130,9 @@ const KEYWORD_MOOD = [
   { re: /江湖|剑|侠|风|刀|酒|战|马蹄|恩仇/, mood: 'jianghu' },
   { re: /夜|霓虹|城|雨|电|赛博|梦|lofi|咖啡|街/, mood: 'xiandai' },
   { re: /江南|诗|雨巷|青瓷|墨|书|画|竹|舟|清/, mood: 'qingya' },
+  { re: /宫廷|雅乐|祭祀|庄严|肃穆|庙堂|朝|古典|编钟/, mood: 'gongting' },
+  { re: /田园|山歌|牧|田野|梯田|农家|葫芦丝|傣|乡/, mood: 'tianyuan' },
+  { re: /京剧|秦腔|梆子|北方|黄土|高亢|西北|板胡/, mood: 'beige' },
 ];
 const KEYWORD_KEY = [
   { re: /月|夜|幽|影|静/, key: 'A' },
