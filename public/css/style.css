@@ -620,3 +620,33 @@ pre.code code { color: #c8c2b6; font-family: ui-monospace, "SF Mono", Menlo, Con
 .tech-list { margin: 8px 0 0; padding-left: 18px; }
 .tech-list li { font-size: 12px; color: #b9b4a9; line-height: 1.85; }
 .tech-list b { color: var(--gold-soft); }
+
+/* ---------- 参数锁 ---------- */
+.head-actions { display: flex; gap: 4px; }
+.head-actions .btn-mini { padding: 4px 8px; font-size: 10.5px; }
+.lk {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-right: 3px; vertical-align: middle;
+  cursor: pointer; position: relative; opacity: .38; transition: .15s;
+  border-radius: 3px; flex: none;
+}
+.lk::before {
+  content: ''; width: 7px; height: 5px; border: 1.4px solid currentColor;
+  border-bottom: 0; border-radius: 3px 3px 0 0; position: absolute; top: 2px;
+}
+.lk::after {
+  content: ''; width: 10px; height: 7px; background: currentColor;
+  border-radius: 1.5px; position: absolute; bottom: 1px;
+}
+.lk:hover { opacity: .8; }
+.lk.on { opacity: 1; color: var(--gold); filter: drop-shadow(0 0 4px rgba(217,164,65,.6)); }
+.lk.on::before { transform: translateY(-1.5px); border-color: var(--gold); }
+.field > span:has(.lk.on) { color: var(--gold-soft); }
+.lock-hint { color: var(--gold-soft); }
+.btn-mini.on { color: var(--gold); border-color: rgba(217,164,65,.5); border-style: solid; background: rgba(217,164,65,.1); }
+.locked-field { position: relative; }
+.locked-field select, .locked-field input { border-color: rgba(217,164,65,.28); }
+
+/* 扩大锁的点击热区，但不改变视觉尺寸 */
+.lk::marker { content: none; }
+.lk { margin: -3px 1px -3px 0; padding: 3px 1px; box-sizing: content-box; }

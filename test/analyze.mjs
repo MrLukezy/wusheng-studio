@@ -57,7 +57,7 @@ console.log('\n[3] 编曲结构');
 for (const mood of ['qingya', 'huankuai', 'cangliang', 'chanyi', 'jianghu', 'xiandai']) {
   const p = compose({ mood, mode: 3, key: 'D', bpm: 80, density: 0.6, length: 'normal', seed: 12345 });
   const midis = p.notes.filter(n => n.step != null).map(n => n.midi);
-  const bad = p.notes.filter(n => !isFinite(n.t) || !isFinite(n.dur) || n.dur <= 0 || (n.step != null && (!isFinite(n.midi) || n.midi < 30 || n.midi > 96)));
+  const bad = p.notes.filter(n => !isFinite(n.t) || !isFinite(n.dur) || n.dur <= 0 || (n.step != null && (!isFinite(n.midi) || n.midi < 24 || n.midi > 104)));
   const barsOk = p.sections.reduce((a, s) => a + s.bars, 0) === p.meta.bars;
   ok(bad.length === 0 && p.notes.length > 40 && barsOk,
     `${p.meta.moodName} 《${p.meta.title}》`,

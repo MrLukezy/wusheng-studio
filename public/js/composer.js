@@ -246,8 +246,10 @@ export function compose(opts = {}) {
   const dyn = DYNAMICS[dynamicsId] || DYNAMICS.natural;
   const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9);
   const spec = normalizeTracks(opts.tracks && opts.tracks.length ? opts.tracks : defaultTracks(mood), mood);
-  // 注意：bpm 不进种子，改速度只改快慢，不重掷旋律
-  const rng = new Rng(`${seed}|${moodId}|${modeIdx}|${key.name}|${density}|${bars}|${spec.map(t => t.role + t.inst).join(',')}`);
+  // 种子只含「音乐内容」参数（情绪/调式/主音/密度/篇幅），不含 bpm 与配器：
+  //   - 改速度只改快慢，不重掷旋律
+  //   - 换乐器只换音色，旋律骨架保留（这正是「锁种子换配器」的语义）
+  const rng = new Rng(`${seed}|${moodId}|${modeIdx}|${key.name}|${density}|${bars}`);
   const title = opts.title || makeTitle(moodId, new Rng(`${seed}|title`));
   const rootMidi = key.midi;
   const secPerBeat = 60 / bpm;

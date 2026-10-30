@@ -23,6 +23,7 @@ const DEFAULTS = {
   bars: 20, seed: '', ai: true, loop: false, tracks: null, title: '', reason: '',
   texture: 'heterophony', harmony: 'open5', form: 'qichengzhuanhe', joint: 'yuyaowei',
   ornament: 'some', dynamics: 'natural', banship: 'tempoCurve', space: 'hall',
+  locks: {},
 };
 
 let settings = loadSettings();
@@ -34,6 +35,7 @@ let lastPainted = -1;
 let volume = {};
 let busy = false;
 let recomposeTimer = null;
+let seedSource = 'auto'; // auto | user
 
 /* ---------------- 持久化 ---------------- */
 function loadSettings() {
@@ -218,6 +220,50 @@ function syncUI() {
   document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.mood === settings.mood));
 }
 
+/* ---------------- 参数锁 ---------------- */
+const LOCKABLE = ['mode', 'key', 'texture', 'harmony', 'form', 'joint', 'ornament',
+  'dynamics', 'banship', 'space', 'bpm', 'density', 'bars', 'loop', 'seed', 'tracks', 'mood'];
+const isLocked = k => !!(settings.locks && settings.locks[k]);
+function toggleLock(k, force) {
+  settings.locks = settings.locks || {};
+  const next = force === undefined ? !settings.locks[k] : force;
+  if (next) settings.locks[k] = true; else delete settings.locks[k];
+  saveSettings();
+  renderLocks();
+}
+function renderLocks() {
+  document.querySelectorAll('.lk[data-lock]').forEach(el => {
+    el.classList.toggle('on', isLocked(el.dataset.lock));
+    el.title = isLocked(el.dataset.lock) ? '已锁定：重新生成时保持不变' : '点此锁定，重新生成时不变';
+  });
+  $('btnLockTracks').classList.toggle('on', isLocked('tracks'));
+  const locked = LOCKABLE.filter(isLocked);
+  const hint = $('lockHint');
+  if (locked.length) {
+    const label = { mode: '调式', key: '主音', texture: '织体', harmony: '和声', form: '曲式',
+      joint: '句法', ornament: '装饰', dynamics: '力度', banship: '速度走向', space: '空间',
+      bpm: '速度', density: '密度', bars: '长度', loop: '循环', seed: '种子',
+      tracks: '配器', mood: '曲风' };
+    hint.hidden = false;
+    const names = locked.map(k => label[k] || k);
+    hint.textContent = names.length <= 3
+      ? `已锁定 ${names.join('、')}，重新生成时保持`
+      : `已锁定 ${names.length} 项（${names.slice(0, 3).join('、')} 等）`;
+    hint.title = `锁定项：${names.join('、')}`;
+  } else {
+    hint.hidden = true;
+  }
+  // 视觉上让锁定的字段边框变色
+  document.querySelectorAll('.field').forEach(f => {
+    const lk = f.querySelector('.lk[data-lock]');
+    f.classList.toggle('locked-field', !!(lk && isLocked(lk.dataset.lock)));
+  });
+}
+// 从一组候选里取「未被锁定」的字段，锁定的用当前值
+function pick(field, candidate) {
+  return isLocked(field) ? settings[field] : candidate;
+}
+
 /* ---------------- 五声键盘 ---------------- */
 const KEYMAP = { a: 0, s: 1, d: 2, f: 3, g: 4, q: 5, w: 6, e: 7, r: 8, t: 9 };
 const currentRoot = () => (piece ? piece.meta.rootMidi : (KEYS.find(k => k.name === settings.key) || KEYS[0]).midi);
@@ -305,14 +351,22 @@ async function generate() {
       const res = await callArrange(s.inspire);
       if (res.ok && res.data) {
         ai = res.data;
-        settings.mood = ai.mood; settings.mode = ai.mode; settings.key = ai.key;
-        settings.bpm = ai.bpm; settings.density = Math.round(ai.density * 100);
-        settings.bars = ai.bars; settings.tracks = ai.tracks;
-        settings.title = ai.title; settings.reason = ai.reason;
+        // 锁定的字段一律保留当前值，不被 AI 覆盖
+        settings.mood = pick('mood', ai.mood);
+        settings.mode = pick('mode', ai.mode);
+        settings.key = pick('key', ai.key);
+        settings.bpm = pick('bpm', ai.bpm);
+        settings.density = pick('density', Math.round(ai.density * 100));
+        settings.bars = pick('bars', ai.bars);
+        settings.tracks = isLocked('tracks')
+          ? (settings.tracks?.length ? settings.tracks : defaultTracks(MOOD_BY_ID[settings.mood] || MOOD_BY_ID.qingya))
+          : ai.tracks;
+        settings.title = ai.title;
+        settings.reason = ai.reason;
         for (const k of ['texture', 'harmony', 'form', 'joint', 'ornament', 'dynamics', 'space']) {
-          if (ai[k]) settings[k] = ai[k];
+          if (ai[k]) settings[k] = pick(k, ai[k]);
         }
-        if (typeof ai.loop === 'boolean') settings.loop = ai.loop;
+        if (typeof ai.loop === 'boolean') settings.loop = pick('loop', ai.loop);
         bar.style.width = '55%';
         setGen(0.3, '配器已确定', ai.tracks.map(t => INSTRUMENTS[t.inst]?.name || t.inst).join(' + '));
         status(`AI 已选：${ai.tracks.map(t => INSTRUMENTS[t.inst]?.name || t.inst).join(' + ')}`, 'ok');
@@ -323,16 +377,29 @@ async function generate() {
 
     if (!ai) {
       const parsed = analyzeInspiration(s.inspire);
-      if (parsed.mood) settings.mood = parsed.mood;
-      if (parsed.mode != null && s.mode === 0) settings.mode = parsed.mode;
-      if (parsed.key && s.key === 'C') settings.key = parsed.key;
-      settings.tracks = defaultTracks(MOOD_BY_ID[settings.mood] || MOOD_BY_ID.qingya);
+      if (parsed.mood) settings.mood = pick('mood', parsed.mood);
+      if (parsed.mode != null && s.mode === 0) settings.mode = pick('mode', parsed.mode);
+      if (parsed.key && s.key === 'C') settings.key = pick('key', parsed.key);
+      if (!isLocked('tracks')) {
+        settings.tracks = defaultTracks(MOOD_BY_ID[settings.mood] || MOOD_BY_ID.qingya);
+      }
       settings.title = '';
       settings.reason = '';
       status(s.inspire ? '已按关键词解析' : '', '');
     }
 
-    seedNum = s.seed !== '' ? Number(s.seed) : Math.floor(Math.random() * 1e9);
+    // 种子决策：
+    //  - 锁定 → 沿用上次（配合其它锁可做「只换音色」）
+    //  - 用户手填/点骰子 → 用他给的（可复现）
+    //  - 系统上次自动掷的 → 本次重掷（这才是「重新生成」的默认语义）
+    if (isLocked('seed') && seedNum != null) {
+      // keep
+    } else if (seedSource === 'user' && s.seed !== '') {
+      seedNum = Number(s.seed);
+    } else {
+      seedNum = Math.floor(Math.random() * 1e9);
+      seedSource = 'auto';
+    }
     settings.seed = String(seedNum);
     syncUI();
 
@@ -834,7 +901,7 @@ function renderLibrary() {
         settings.mood = piece.meta.mood; settings.mode = piece.meta.mode;
         settings.key = piece.meta.key; settings.bpm = piece.meta.bpm;
         settings.density = Math.round(piece.meta.density * 100);
-        settings.bars = piece.meta.bars; seedNum = piece.meta.seed;
+        settings.bars = piece.meta.bars; seedNum = piece.meta.seed; seedSource = 'user';
         settings.title = piece.meta.title; settings.reason = piece.meta.reason;
         syncUI();
         player.stop(); player.mute.clear(); player.solo = null; volume = {};
@@ -993,8 +1060,9 @@ function bind() {
     const b = e.target.closest('.chip'); if (!b) return;
     settings.mood = b.dataset.mood;
     const m = MOOD_BY_ID[settings.mood];
-    settings.bpm = m.bpm; settings.density = Math.round(m.density * 100);
-    settings.tracks = defaultTracks(m);
+    if (!isLocked('bpm')) settings.bpm = m.bpm;
+    if (!isLocked('density')) settings.density = Math.round(m.density * 100);
+    if (!isLocked('tracks')) settings.tracks = defaultTracks(m);
     syncUI(); saveSettings();
     if (piece) flagPending(); else generate();
   });
@@ -1015,9 +1083,14 @@ function bind() {
     markDirty();
   });
   $('key').addEventListener('change', () => { settings.key = $('key').value; markDirty(); });
-  $('seed').addEventListener('input', e => { settings.seed = e.target.value; saveSettings(); });
+  $('seed').addEventListener('input', e => {
+    settings.seed = e.target.value;
+    seedSource = e.target.value.trim() === '' ? 'auto' : 'user';
+    saveSettings();
+  });
   $('dice').addEventListener('click', () => {
     settings.seed = String(Math.floor(Math.random() * 999999));
+    seedSource = 'user';
     $('seed').value = settings.seed; saveSettings();
     if (piece) { seedNum = +settings.seed; flagPending(); }
   });
@@ -1043,6 +1116,24 @@ function bind() {
   $('btnMidi').addEventListener('click', exportMidi);
   $('btnSave').addEventListener('click', savePiece);
 
+  document.querySelectorAll('.lk[data-lock]').forEach(el => {
+    el.addEventListener('click', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      toggleLock(el.dataset.lock);
+    });
+  });
+  $('btnLockAll').addEventListener('click', () => {
+    settings.locks = {};
+    for (const k of LOCKABLE) settings.locks[k] = true;
+    saveSettings(); renderLocks();
+    toast('已锁定全部参数');
+  });
+  $('btnUnlockAll').addEventListener('click', () => {
+    settings.locks = {};
+    saveSettings(); renderLocks();
+    toast('已清空锁定');
+  });
+  $('btnLockTracks').addEventListener('click', () => toggleLock('tracks'));
   $('btnParamDoc').addEventListener('click', openParamDoc);
   $('closeParam').addEventListener('click', () => $('paramModal').hidden = true);
   $('paramModal').addEventListener('click', e => { if (e.target.id === 'paramModal') $('paramModal').hidden = true; });
@@ -1123,12 +1214,14 @@ function bind() {
 async function main() {
   initControls();
   bind();
+  renderLocks();
   buildKeys();
   renderLibrary();
   tick();
   const fromHash = applyHash();
   if (fromHash) {
     seedNum = Number(settings.seed) || Math.floor(Math.random() * 1e9);
+    seedSource = 'user';
     await buildPiece({ seed: seedNum, engine: 'rule', title: '', reason: '' });
   }
 }

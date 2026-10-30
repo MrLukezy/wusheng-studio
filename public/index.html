@@ -52,43 +52,48 @@
       <section class="card params-card">
         <div class="card-head">
           <h2>参数</h2>
-          <button class="btn-mini" id="btnParamDoc">说明</button>
+          <div class="head-actions">
+            <button class="btn-mini" id="btnLockAll" title="锁定全部：重新生成时保持所有参数">全锁</button>
+            <button class="btn-mini" id="btnUnlockAll" title="清空所有锁定">解锁</button>
+            <button class="btn-mini" id="btnParamDoc">说明</button>
+          </div>
         </div>
         <p class="tip tight" id="paramHint">改动需重新生成</p>
+        <p class="tip tight lock-hint" id="lockHint" hidden></p>
 
         <div class="field-row">
-          <label class="field"><span>调式 <i class="q" data-doc="mode">?</i></span><select id="mode"></select></label>
-          <label class="field"><span>主音 <i class="q" data-doc="key">?</i></span><select id="key"></select></label>
+          <label class="field"><span>调式 <i class="lk" data-lock="mode"></i><i class="q" data-doc="mode">?</i></span><select id="mode"></select></label>
+          <label class="field"><span>主音 <i class="lk" data-lock="key"></i><i class="q" data-doc="key">?</i></span><select id="key"></select></label>
         </div>
         <div class="field-row">
-          <label class="field"><span>织体 <i class="q" data-doc="texture">?</i></span><select id="texture"></select></label>
-          <label class="field"><span>和声 <i class="q" data-doc="harmony">?</i></span><select id="harmony"></select></label>
+          <label class="field"><span>织体 <i class="lk" data-lock="texture"></i><i class="q" data-doc="texture">?</i></span><select id="texture"></select></label>
+          <label class="field"><span>和声 <i class="lk" data-lock="harmony"></i><i class="q" data-doc="harmony">?</i></span><select id="harmony"></select></label>
         </div>
         <div class="field-row">
-          <label class="field"><span>曲式 <i class="q" data-doc="form">?</i></span><select id="form"></select></label>
-          <label class="field"><span>句法 <i class="q" data-doc="joint">?</i></span><select id="joint"></select></label>
+          <label class="field"><span>曲式 <i class="lk" data-lock="form"></i><i class="q" data-doc="form">?</i></span><select id="form"></select></label>
+          <label class="field"><span>句法 <i class="lk" data-lock="joint"></i><i class="q" data-doc="joint">?</i></span><select id="joint"></select></label>
         </div>
 
-        <label class="field range"><span>速度 <b id="bpmVal">68</b> BPM <i class="q" data-doc="bpm">?</i></span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
-        <label class="field range"><span>密度 <b id="densityVal">55%</b> <i class="q" data-doc="density">?</i></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
-        <label class="field range"><span>长度 <b id="barsVal">20</b> 小节 <em id="durHint">≈ 1:10</em> <i class="q" data-doc="bars">?</i></span><input type="range" id="bars" min="8" max="48" step="1" value="20"></label>
+        <label class="field range"><span>速度 <i class="lk" data-lock="bpm"></i><b id="bpmVal">68</b> BPM <i class="q" data-doc="bpm">?</i></span><input type="range" id="bpm" min="40" max="160" step="1" value="68"></label>
+        <label class="field range"><span>密度 <i class="lk" data-lock="density"></i><b id="densityVal">55%</b> <i class="q" data-doc="density">?</i></span><input type="range" id="density" min="10" max="100" step="1" value="55"></label>
+        <label class="field range"><span>长度 <i class="lk" data-lock="bars"></i><b id="barsVal">20</b> 小节 <em id="durHint">≈ 1:10</em> <i class="q" data-doc="bars">?</i></span><input type="range" id="bars" min="8" max="48" step="1" value="20"></label>
 
         <div class="field-row">
-          <label class="field"><span>装饰 <i class="q" data-doc="ornament">?</i></span><select id="ornament"></select></label>
-          <label class="field"><span>力度 <i class="q" data-doc="dynamics">?</i></span><select id="dynamics"></select></label>
+          <label class="field"><span>装饰 <i class="lk" data-lock="ornament"></i><i class="q" data-doc="ornament">?</i></span><select id="ornament"></select></label>
+          <label class="field"><span>力度 <i class="lk" data-lock="dynamics"></i><i class="q" data-doc="dynamics">?</i></span><select id="dynamics"></select></label>
         </div>
         <div class="field-row">
-          <label class="field"><span>速度走向 <i class="q" data-doc="banship">?</i></span><select id="banship"></select></label>
-          <label class="field"><span>空间 <i class="q" data-doc="space">?</i></span><select id="space"></select></label>
+          <label class="field"><span>速度走向 <i class="lk" data-lock="banship"></i><i class="q" data-doc="banship">?</i></span><select id="banship"></select></label>
+          <label class="field"><span>空间 <i class="lk" data-lock="space"></i><i class="q" data-doc="space">?</i></span><select id="space"></select></label>
         </div>
 
         <label class="ai-row compact">
-          <span class="ai-text"><b>循环曲式</b><em>去掉引子与尾声，结尾落回旋音</em></span>
+          <span class="ai-text"><b>循环曲式 <i class="lk" data-lock="loop"></i></b><em>去掉引子与尾声，结尾落回旋音</em></span>
           <input type="checkbox" id="loopToggle" class="switch">
         </label>
 
         <div class="field-row seed">
-          <label class="field"><span>种子 <i class="q" data-doc="seed">?</i></span><input id="seed" inputmode="numeric" placeholder="随机"></label>
+          <label class="field"><span>种子 <i class="lk" data-lock="seed"></i><i class="q" data-doc="seed">?</i></span><input id="seed" inputmode="numeric" placeholder="随机"></label>
           <button class="dice" id="dice" title="换一个种子">🎲</button>
         </div>
       </section>
@@ -155,6 +160,7 @@
           <h2>音轨</h2>
           <div class="mix-actions">
             <span class="muted" id="mixCount"></span>
+            <button class="btn-mini" id="btnLockTracks" title="锁定配器：重新生成时不换音色组合">锁配器</button>
             <button class="btn-mini" id="btnAddTrack">＋ 添加音轨</button>
             <div class="add-menu" id="addMenu" hidden></div>
           </div>
